@@ -85,7 +85,7 @@ describe('useGame', () => {
     const wrongToken = tokenForPlayer(created, wrongPlayerId)
     const heroId = created.game.heroPool[0]
 
-    let res
+    let res: PickResult | undefined
     await act(async () => {
       res = await result.current.makePick(wrongToken, heroId)
     })
@@ -106,7 +106,7 @@ describe('useGame', () => {
     const correctToken = tokenForPlayer(created, correctPlayerId)
     const heroId = created.game.heroPool[0]
 
-    let res
+    let res: PickResult | undefined
     await act(async () => {
       res = await result.current.makePick(correctToken, heroId)
     })
@@ -161,7 +161,7 @@ describe('useGame', () => {
     expect(result.current.isComplete).toBe(false)
 
     // makePick with no gameId resolves with a not-found result.
-    let res
+    let res: PickResult | undefined
     await act(async () => {
       res = await result.current.makePick('any', 'any')
     })
@@ -182,7 +182,7 @@ describe('useGame', () => {
       const token = tokenForPlayer(created, pickerId)
       const heroId = pickAvailable(created, used)
       used.add(heroId)
-      let res
+      let res: PickResult | undefined
       await act(async () => {
         res = await result.current.makePick(token, heroId)
       })
