@@ -8,38 +8,34 @@ export interface HeroDominoProps {
   selected?: boolean
   disabled?: boolean
   onClick?: () => void
-  /** Optional position index — used to subtly stagger the lean. */
+  /** Accepted for layout compatibility; no longer affects rendering. */
   index?: number
 }
 
 const BASE_CLASSES =
-  'group relative flex h-64 w-20 shrink-0 flex-col items-stretch overflow-hidden rounded-md border border-slate-700/70 bg-slate-900 text-left text-slate-100 shadow-md shadow-black/40 outline-none transition-all duration-200 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950'
+  'group relative flex h-64 w-20 shrink-0 flex-col items-stretch overflow-hidden rounded-md border border-slate-700/70 bg-slate-900 text-left text-slate-100 shadow-md shadow-black/40 outline-none transition-transform transition-shadow duration-200 ease-out will-change-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950'
 
-const LEANING_TRANSFORM =
-  '-rotate-6 skew-y-1 motion-reduce:rotate-0 motion-reduce:skew-y-0 motion-reduce:transform-none'
-
+// Carousel-style pop: tiles sit straight, then lift + grow UNIFORMLY on
+// hover/focus. A uniform scale preserves the art's aspect (no distortion) and
+// uses a transform (not width) so neighbours don't reflow.
 const HOVER_TRANSFORM =
-  'hover:rotate-0 hover:skew-y-0 hover:scale-105 hover:z-10 hover:shadow-xl hover:shadow-teal-900/40 hover:border-teal-500/70 focus-visible:rotate-0 focus-visible:skew-y-0 focus-visible:scale-105 focus-visible:z-10 motion-reduce:transition-none motion-reduce:hover:scale-100 motion-reduce:hover:rotate-0 motion-reduce:focus-visible:scale-100'
+  'hover:-translate-y-3 hover:scale-[1.15] hover:z-20 hover:shadow-2xl hover:shadow-teal-900/50 hover:border-teal-500/70 focus-visible:-translate-y-3 focus-visible:scale-[1.15] focus-visible:z-20 motion-reduce:transition-none motion-reduce:hover:scale-100 motion-reduce:hover:translate-y-0 motion-reduce:focus-visible:scale-100 motion-reduce:focus-visible:translate-y-0'
 
 const SELECTED_CLASSES =
   'ring-2 ring-amber-400 ring-offset-2 ring-offset-slate-950 shadow-lg shadow-amber-900/40 border-amber-400/80'
 
 const DISABLED_CLASSES =
-  'opacity-40 grayscale cursor-not-allowed pointer-events-none hover:scale-100 hover:rotate-0'
+  'opacity-40 grayscale cursor-not-allowed pointer-events-none hover:scale-100 hover:translate-y-0'
 
 export function HeroDomino({
   hero,
   selected = false,
   disabled = false,
   onClick,
-  index = 0,
 }: HeroDominoProps): JSX.Element {
   const placeholder = heroPlaceholderStyle(hero.id)
   const portraitUrl = heroImageUrl(hero.imageId)
   const monogram = heroMonogram(hero.name)
-
-  // Subtle stagger: shift each domino slightly so they lean like a row.
-  const offsetStyle = { marginLeft: index > 0 ? '-0.5rem' : undefined }
 
   function handleClick(event: MouseEvent<HTMLButtonElement>): void {
     if (disabled) {
@@ -57,10 +53,8 @@ export function HeroDomino({
       aria-disabled={disabled || undefined}
       disabled={disabled}
       onClick={handleClick}
-      style={offsetStyle}
       className={cn(
         BASE_CLASSES,
-        LEANING_TRANSFORM,
         !disabled && HOVER_TRANSFORM,
         selected && SELECTED_CLASSES,
         disabled && DISABLED_CLASSES,

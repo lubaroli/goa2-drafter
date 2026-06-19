@@ -147,7 +147,7 @@ export function HeroSelector({
         <div
           role="list"
           aria-label="Hero selection"
-          className="flex snap-x snap-mandatory gap-1 overflow-x-auto pb-4 pt-6 sm:flex-wrap sm:gap-2 sm:overflow-visible"
+          className="flex snap-x snap-mandatory gap-2 overflow-x-auto px-1 pb-6 pt-8 sm:flex-wrap sm:justify-center sm:gap-3 sm:overflow-visible"
         >
           {results.map((hero, idx) => (
             <div role="listitem" key={hero.id} className="snap-start">
