@@ -73,10 +73,7 @@ export function TeamRoster({
     pickByPlayerId.set(pick.playerId, pick)
   }
 
-  const pickedCount = teamPlayers.reduce(
-    (acc, p) => acc + (pickByPlayerId.has(p.id) ? 1 : 0),
-    0,
-  )
+  const pickedCount = teamPlayers.reduce((acc, p) => acc + (pickByPlayerId.has(p.id) ? 1 : 0), 0)
 
   return (
     <Card
@@ -86,7 +83,12 @@ export function TeamRoster({
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
           <span className={cn('h-2.5 w-2.5 rounded-full', accent.dot)} aria-hidden="true" />
-          <h2 className={cn('truncate text-base font-semibold uppercase tracking-wide', accent.heading)}>
+          <h2
+            className={cn(
+              'truncate text-base font-semibold uppercase tracking-wide',
+              accent.heading,
+            )}
+          >
             {headingTitle}
           </h2>
         </div>
@@ -110,7 +112,7 @@ export function TeamRoster({
                 isCurrent
                   ? cn(
                       'border-amber-400/70 bg-amber-500/10 shadow-md shadow-amber-900/30',
-                      'animate-pulse',
+                      'animate-pulse motion-reduce:animate-none',
                     )
                   : 'border-slate-700/60 bg-slate-900/40',
               )}

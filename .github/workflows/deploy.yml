@@ -1,0 +1,77 @@
+# Build the GoA2 Drafter SPA and publish dist/ to GitHub Pages.
+#
+# Repository setup required: Settings → Pages → Build and deployment →
+# Source = "GitHub Actions".
+#
+# Supabase configuration is OPTIONAL. To enable the async multiplayer
+# backend on the deployed site, add the following repository secrets at
+# Settings → Secrets and variables → Actions:
+#   - VITE_SUPABASE_URL
+#   - VITE_SUPABASE_ANON_KEY
+# If either secret is missing, the build still succeeds and the deployed
+# site falls back to the localStorage single-device store.
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent Pages deployment; cancel in-progress runs so
+# the most recent commit always wins.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build
+        # Inject Supabase env at build time. Vite reads `VITE_*` vars from
+        # the environment and inlines them into the bundle. Missing secrets
+        # resolve to empty strings, which `isSupabaseConfigured()` treats as
+        # "not configured" — the deployed site then uses the local store.
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: npm run build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -15,7 +15,6 @@ import type {
 import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js'
 import { buildSnakeDraftOrder, randomAssignment } from '@/services/draft'
 import { generateGameCode, generateToken } from '@/utils/ids'
-import { getSupabaseClient } from '@/services/supabase'
 
 // ---------------------------------------------------------------------------
 // Database row shapes (snake_case columns as stored in Postgres)
@@ -171,7 +170,7 @@ const isPickError = (value: unknown): value is PickError =>
 export class SupabaseGameStore implements GameStore {
   private readonly client: SupabaseClient
 
-  constructor(client: SupabaseClient = getSupabaseClient()) {
+  constructor(client: SupabaseClient) {
     this.client = client
   }
 

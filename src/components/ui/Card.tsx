@@ -10,7 +10,7 @@ const BASE_CLASSES =
   'rounded-xl border border-slate-700/60 bg-slate-800/80 p-4 shadow-md shadow-black/20 backdrop-blur-sm transition-all duration-200'
 
 const INTERACTIVE_CLASSES =
-  'cursor-pointer hover:-translate-y-0.5 hover:border-teal-500/60 hover:shadow-lg hover:shadow-teal-900/30 active:translate-y-0'
+  'cursor-pointer hover:-translate-y-0.5 hover:border-teal-500/60 hover:shadow-lg hover:shadow-teal-900/30 active:translate-y-0 motion-reduce:transition-none motion-reduce:hover:translate-y-0 motion-reduce:active:translate-y-0'
 
 export function Card({ interactive = false, className, children, ...rest }: CardProps) {
   return (
