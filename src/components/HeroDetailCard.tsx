@@ -34,7 +34,7 @@ export function HeroDetailCard({
   return (
     <Card
       className={cn(
-        'relative flex w-full max-w-3xl flex-col gap-6 overflow-hidden border-slate-700/60 bg-slate-900/90 p-6 text-slate-100 sm:flex-row',
+        'relative flex w-full max-w-3xl flex-col gap-6 overflow-hidden border-slate-700/60 bg-slate-900/90 p-6 text-slate-100 sm:min-h-[22rem] sm:flex-row',
       )}
     >
       <button
