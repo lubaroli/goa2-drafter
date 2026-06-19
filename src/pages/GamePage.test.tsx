@@ -12,6 +12,12 @@ const clearStorage = (): void => {
   if (ls) ls.clear()
 }
 
+/** Detach any in-tab subscriptions left on the shared singleton store. */
+const clearStoreSubscriptions = (): void => {
+  const s = gameStore as { clearSubscriptions?: () => void }
+  s.clearSubscriptions?.()
+}
+
 type CreatedGameResult = Awaited<ReturnType<GameStore['createGame']>>
 
 // A small fixed hero pool from the real data set.
@@ -51,10 +57,12 @@ function renderAt(path: string): void {
 
 describe('GamePage', () => {
   beforeEach(() => {
+    clearStoreSubscriptions()
     clearStorage()
   })
   afterEach(() => {
     cleanup()
+    clearStoreSubscriptions()
   })
 
   it('renders the read-only board (no selector) when no token is present', async () => {

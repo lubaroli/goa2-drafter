@@ -346,4 +346,14 @@ export class LocalGameStore implements GameStore {
     if (!set) return
     for (const cb of set) cb(snap)
   }
+
+  /**
+   * Detach every in-tab subscriber. Cross-tab `storage` listeners are removed
+   * by each subscription's own unsubscribe; this clears the in-memory registry
+   * so no same-tab callback can fire after the caller has torn down (used by
+   * tests to isolate the shared singleton between cases).
+   */
+  clearSubscriptions(): void {
+    this.listeners.clear()
+  }
 }
