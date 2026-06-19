@@ -97,6 +97,13 @@ describe('Chip', () => {
     fireEvent.click(screen.getByRole('switch'))
     expect(handleClick).toHaveBeenCalledTimes(1)
   })
+
+  it('renders a non-interactive span when static — no switch role', () => {
+    render(<Chip label="Tank" static />)
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    expect(screen.getByText('Tank').tagName).toBe('SPAN')
+  })
 })
 
 describe('StatBar', () => {

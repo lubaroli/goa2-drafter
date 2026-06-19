@@ -5,6 +5,12 @@ export interface ChipProps {
   selected?: boolean
   onClick?: () => void
   tone?: 'default' | 'red' | 'blue' | 'gold'
+  /**
+   * Render as a non-interactive label (a styled <span>) instead of a toggle
+   * button. Use this when the chip is purely informational and should not be
+   * announced as a switch by assistive tech.
+   */
+  static?: boolean
 }
 
 const TONE_UNSELECTED: Record<NonNullable<ChipProps['tone']>, string> = {
@@ -24,15 +30,27 @@ const TONE_SELECTED: Record<NonNullable<ChipProps['tone']>, string> = {
 const BASE_CLASSES =
   'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm font-medium transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900'
 
-export function Chip({ label, selected = false, onClick, tone = 'default' }: ChipProps) {
+export function Chip({
+  label,
+  selected = false,
+  onClick,
+  tone = 'default',
+  static: isStatic = false,
+}: ChipProps) {
   const toneClasses = selected ? TONE_SELECTED[tone] : TONE_UNSELECTED[tone]
+  const className = cn(BASE_CLASSES, toneClasses, selected && 'is-selected')
+
+  if (isStatic) {
+    return <span className={className}>{label}</span>
+  }
+
   return (
     <button
       type="button"
       role="switch"
       aria-checked={selected}
       onClick={onClick}
-      className={cn(BASE_CLASSES, toneClasses, selected && 'is-selected')}
+      className={className}
     >
       {label}
     </button>

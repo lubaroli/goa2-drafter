@@ -75,14 +75,28 @@ export type DraftMethod = 'snake' | 'random'
 
 export type GameStatus = 'setup' | 'drafting' | 'complete'
 
-export interface Player {
+/**
+ * Player data safe to expose to every participant in the game (and to anyone
+ * who can read a `GameSnapshot`). Notably DOES NOT include the magic-link
+ * token — that field is sensitive auth material and is only ever returned
+ * to the organiser by `createGame`.
+ */
+export interface PublicPlayer {
   id: string
   name: string
   team: TeamId
-  /** Unguessable magic-link token. */
-  token: string
   /** Stable order within the game. */
   seat: number
+}
+
+/**
+ * Full player record, including the magic-link `token`. Returned only by
+ * `GameStore.createGame` so the organiser can build per-player join links.
+ * Never included in `GameSnapshot` — see `PublicPlayer`.
+ */
+export interface Player extends PublicPlayer {
+  /** Unguessable magic-link token. */
+  token: string
 }
 
 export interface Pick {
@@ -109,10 +123,15 @@ export interface Game {
   createdAt: number
 }
 
-/** Live state aggregated for clients. */
+/**
+ * Live state aggregated for clients. `players` uses `PublicPlayer` — tokens
+ * are never broadcast in the snapshot since the snapshot is read by every
+ * participant. The organiser receives full `Player[]` (with tokens) once,
+ * from `createGame`, to construct per-player magic links.
+ */
 export interface GameSnapshot {
   game: Game
-  players: Player[]
+  players: PublicPlayer[]
   picks: Pick[]
 }
 

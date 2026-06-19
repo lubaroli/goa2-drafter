@@ -6,6 +6,7 @@ import type {
   Pick,
   PickResult,
   Player,
+  PublicPlayer,
 } from '@/types'
 import { buildSnakeDraftOrder, nextPickerId, randomAssignment } from '@/services/draft'
 import { generateGameCode, generateToken } from '@/utils/ids'
@@ -17,13 +18,26 @@ const MAX_CAS_ATTEMPTS = 5
 const snapshotKey = (gameId: string): string => `${KEY_PREFIX}${gameId}`
 const organiserKey = (gameId: string): string => `${KEY_PREFIX}${gameId}${ORG_SUFFIX}`
 
+const toPublicPlayer = (p: Player): PublicPlayer => ({
+  id: p.id,
+  name: p.name,
+  team: p.team,
+  seat: p.seat,
+})
+
 /**
  * Private persisted wrapper around `GameSnapshot`. The `rev` field is a
  * monotonic version counter used for optimistic concurrency control on
- * `makePick`. Callers of `getSnapshot` never see this — only `.snapshot`.
+ * `makePick`. The `tokens` map keeps each player's auth token *outside* the
+ * shareable `snapshot.players` projection (see `PublicPlayer` in types) — the
+ * snapshot returned to callers never carries tokens, while `makePick` still
+ * needs to resolve a token → player id internally.
+ *
+ * Callers of `getSnapshot` only ever see `.snapshot`.
  */
 interface PersistedRecord {
   snapshot: GameSnapshot
+  tokens: Record<string, string>
   rev: number
 }
 
@@ -174,8 +188,10 @@ export class LocalGameStore implements GameStore {
       }
     }
 
-    const snapshot: GameSnapshot = { game, players, picks }
-    this.writeRecord(id, snapshot, 0)
+    const snapshot: GameSnapshot = { game, players: players.map(toPublicPlayer), picks }
+    const tokens: Record<string, string> = {}
+    for (const p of players) tokens[p.id] = p.token
+    this.writeRecord(id, snapshot, tokens, 0)
     this.storage.setItem(organiserKey(id), organiserToken)
     this.notify(id, snapshot)
 
@@ -198,7 +214,10 @@ export class LocalGameStore implements GameStore {
       if (snap.game.status !== 'drafting') {
         return Promise.resolve({ ok: false, error: 'game-not-drafting' })
       }
-      const player = snap.players.find((p) => p.token === playerToken)
+      // Resolve the caller's token via the private tokens map; snapshot.players
+      // is intentionally token-free (see PublicPlayer in types).
+      const playerId = Object.keys(record.tokens).find((id) => record.tokens[id] === playerToken)
+      const player = playerId ? snap.players.find((p) => p.id === playerId) : undefined
       if (!player) return Promise.resolve({ ok: false, error: 'invalid-token' })
       if (nextPickerId(snap.game.draftOrder, snap.game.currentPick) !== player.id) {
         return Promise.resolve({ ok: false, error: 'not-your-turn' })
@@ -226,7 +245,7 @@ export class LocalGameStore implements GameStore {
       }
 
       // Compare-and-set: only commit if `rev` hasn't advanced since we read.
-      if (this.casWrite(gameId, record.rev, nextSnap)) {
+      if (this.casWrite(gameId, record.rev, nextSnap, record.tokens)) {
         this.notify(gameId, nextSnap)
         return Promise.resolve({ ok: true, snapshot: nextSnap })
       }
@@ -280,15 +299,28 @@ export class LocalGameStore implements GameStore {
     if (raw === null) return null
     try {
       const parsed = JSON.parse(raw) as PersistedRecord
-      if (!parsed || typeof parsed.rev !== 'number' || !parsed.snapshot) return null
+      if (
+        !parsed ||
+        typeof parsed.rev !== 'number' ||
+        !parsed.snapshot ||
+        typeof parsed.tokens !== 'object' ||
+        parsed.tokens === null
+      ) {
+        return null
+      }
       return parsed
     } catch {
       return null
     }
   }
 
-  private writeRecord(gameId: string, snapshot: GameSnapshot, rev: number): void {
-    const record: PersistedRecord = { snapshot, rev }
+  private writeRecord(
+    gameId: string,
+    snapshot: GameSnapshot,
+    tokens: Record<string, string>,
+    rev: number,
+  ): void {
+    const record: PersistedRecord = { snapshot, tokens, rev }
     this.storage.setItem(snapshotKey(gameId), JSON.stringify(record))
   }
 
@@ -297,10 +329,15 @@ export class LocalGameStore implements GameStore {
    * only commits when the persisted `rev` still matches `expectedRev`.
    * Returns `true` on commit, `false` if a concurrent writer advanced `rev`.
    */
-  private casWrite(gameId: string, expectedRev: number, nextSnapshot: GameSnapshot): boolean {
+  private casWrite(
+    gameId: string,
+    expectedRev: number,
+    nextSnapshot: GameSnapshot,
+    tokens: Record<string, string>,
+  ): boolean {
     const current = this.readRecord(gameId)
     if (!current || current.rev !== expectedRev) return false
-    this.writeRecord(gameId, nextSnapshot, expectedRev + 1)
+    this.writeRecord(gameId, nextSnapshot, tokens, expectedRev + 1)
     return true
   }
 

@@ -65,7 +65,12 @@ describe('LocalGameStore.createGame — snake', () => {
     expect(snap).not.toBeNull()
     const s = snap as GameSnapshot
     expect(s.game).toEqual(game)
-    expect(s.players).toEqual(players)
+    // GameSnapshot.players is the public projection — no token field is exposed.
+    const publicPlayers = players.map(({ id, name, team, seat }) => ({ id, name, team, seat }))
+    expect(s.players).toEqual(publicPlayers)
+    for (const sp of s.players) {
+      expect(sp).not.toHaveProperty('token')
+    }
     expect(s.picks).toEqual([])
   })
 })
@@ -354,7 +359,17 @@ describe('LocalGameStore.makePick — optimistic concurrency', () => {
           players: snapAtStart.players,
           picks: [competingPick],
         }
-        const competingRecord = JSON.stringify({ snapshot: competingSnap, rev: 1 })
+        // The persisted record carries a private token map alongside the
+        // shared snapshot — see PersistedRecord in LocalGameStore.ts. The
+        // fake competing record must include it or readRecord will reject
+        // the row as malformed and the retry path can't resolve A's token.
+        const competingTokens: Record<string, string> = {}
+        for (const p of players) competingTokens[p.id] = p.token
+        const competingRecord = JSON.stringify({
+          snapshot: competingSnap,
+          tokens: competingTokens,
+          rev: 1,
+        })
         realSet(k, competingRecord)
         competingCommitted = true
         return competingRecord
