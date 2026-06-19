@@ -1,0 +1,337 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { SetupPage } from './SetupPage'
+import { HERO_PACKS } from '@/data/packs'
+import { gameStore } from '@/services/store'
+
+/**
+ * Render SetupPage at a given URL with both wizard + dashboard routes
+ * registered, mirroring the production app router.
+ */
+function renderSetupAt(initialPath: string): void {
+  render(
+    <MemoryRouter initialEntries={[initialPath]}>
+      <Routes>
+        <Route path="/setup" element={<SetupPage />} />
+        <Route path="/setup/:gameId" element={<SetupPage />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
+function renderSetup(): void {
+  renderSetupAt('/setup')
+}
+
+describe('SetupPage — Step 1 (Players)', () => {
+  it('selecting 4 players shows 4 name inputs', () => {
+    renderSetup()
+    // Default is 4 — verify by counting the player inputs.
+    const inputs = screen.getAllByRole('textbox')
+    expect(inputs).toHaveLength(4)
+    expect(screen.getByLabelText('Player 1 name')).toBeInTheDocument()
+    expect(screen.getByLabelText('Player 4 name')).toBeInTheDocument()
+  })
+
+  it('switching to 6 players renders 6 name inputs', async () => {
+    const user = userEvent.setup()
+    renderSetup()
+    await user.click(screen.getByRole('switch', { name: /6 players/i }))
+    expect(screen.getAllByRole('textbox')).toHaveLength(6)
+  })
+})
+
+describe('SetupPage — Step 2 (Teams)', () => {
+  it('randomize splits players into two equal teams', async () => {
+    const user = userEvent.setup()
+    renderSetup()
+    // Advance to step 2.
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+
+    // Selecting the "Randomize teams" chip auto-randomizes.
+    await user.click(screen.getByRole('switch', { name: /randomize teams/i }))
+
+    // Status row should report balanced 2-2.
+    const status = screen.getByRole('status')
+    expect(status.textContent).toMatch(/Red:\s*2/)
+    expect(status.textContent).toMatch(/Blue:\s*2/)
+    expect(status.textContent).toMatch(/balanced/i)
+
+    // Next button enabled.
+    expect(screen.getByRole('button', { name: /^next$/i })).not.toBeDisabled()
+  })
+
+  it('manual unequal teams blocks Next with a validation message', async () => {
+    const user = userEvent.setup()
+    renderSetup()
+    // Advance to step 2.
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+
+    await user.click(screen.getByRole('switch', { name: /assign manually/i }))
+
+    // Assign all 4 players to Red — unbalanced.
+    const redChips = screen.getAllByRole('switch', { name: 'Red' })
+    expect(redChips).toHaveLength(4)
+    for (const chip of redChips) {
+      await user.click(chip)
+    }
+
+    expect(screen.getByTestId('step-validation')).toHaveTextContent(/teams must be balanced/i)
+    expect(screen.getByRole('button', { name: /^next$/i })).toBeDisabled()
+  })
+})
+
+describe('SetupPage — Step 3 (Hero pool)', () => {
+  it("a pack's Select all selects all heroes in that pack and updates the counter", async () => {
+    const user = userEvent.setup()
+    renderSetup()
+
+    // Step 1 → Step 2.
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+    // Randomize teams to satisfy step 2.
+    await user.click(screen.getByRole('switch', { name: /randomize teams/i }))
+    // Step 2 → Step 3.
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+
+    // Counter starts at 0.
+    expect(screen.getByText(/Selected 0 \/ need >= 4/i)).toBeInTheDocument()
+
+    // Generate disabled (Next here is the wizard Next, but we're on step 3 → Next).
+    expect(screen.getByRole('button', { name: /^next$/i })).toBeDisabled()
+
+    // Click "Select all" for the Core pack.
+    const corePack = HERO_PACKS.find((p) => p.id === 'core')
+    expect(corePack).toBeTruthy()
+    const coreCount = corePack ? corePack.heroIds.length : 0
+    expect(coreCount).toBeGreaterThanOrEqual(4)
+
+    await user.click(screen.getByRole('button', { name: /select all in core set/i }))
+
+    // Counter reflects count.
+    expect(
+      screen.getByText(new RegExp(`Selected ${coreCount} / need >= 4`, 'i')),
+    ).toBeInTheDocument()
+
+    // Next now enabled.
+    expect(screen.getByRole('button', { name: /^next$/i })).not.toBeDisabled()
+  })
+})
+
+describe('SetupPage — Step 5 (Generate)', () => {
+  it('generates a game and renders share links containing /board/ and /play/', async () => {
+    const user = userEvent.setup()
+    renderSetup()
+
+    // Step 1 → 2
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+    // Randomize teams
+    await user.click(screen.getByRole('switch', { name: /randomize teams/i }))
+    // Step 2 → 3
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+    // Select Core pack
+    await user.click(screen.getByRole('button', { name: /select all in core set/i }))
+    // Step 3 → 4
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+    // Step 4 → 5 (snake is default)
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+
+    // Generate.
+    await user.click(screen.getByRole('button', { name: /generate game/i }))
+
+    // Results panel.
+    expect(await screen.findByText(/game created/i)).toBeInTheDocument()
+
+    // A board link is shown — match any element whose text contains /board/<id>.
+    expect(
+      screen.getByText((content) => /\/board\/[a-z0-9-]+/i.test(content)),
+    ).toBeInTheDocument()
+
+    // 4 player links are shown (one per player), each containing /play/ and a token.
+    const playLinks = screen.getAllByText((content) => /\/play\/[^\s?]+\?t=/i.test(content))
+    expect(playLinks.length).toBe(4)
+
+    // Organiser link present.
+    expect(screen.getByText(/organiser link/i)).toBeInTheDocument()
+    expect(
+      screen.getByText((content) => /\/setup\/[^\s?]+\?t=/i.test(content)),
+    ).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Dashboard mode — `/setup/:gameId?t=<organiserToken>`
+// ---------------------------------------------------------------------------
+
+describe('SetupPage — organiser dashboard', () => {
+  it('renders the board link and player roster for an existing game', async () => {
+    // Seed a game directly via the store so we have a real gameId + token.
+    const { game, organiserToken, players } = await gameStore.createGame({
+      playerCount: 4,
+      method: 'snake',
+      heroPool: HERO_PACKS[0]!.heroIds.slice(0, 4),
+      players: [
+        { name: 'Ada', team: 'red', seat: 0 },
+        { name: 'Bea', team: 'red', seat: 1 },
+        { name: 'Cal', team: 'blue', seat: 2 },
+        { name: 'Dax', team: 'blue', seat: 3 },
+      ],
+    })
+
+    renderSetupAt(`/setup/${game.id}?t=${organiserToken}`)
+
+    // The dashboard heading should appear after the snapshot loads.
+    expect(await screen.findByText(/organiser dashboard/i)).toBeInTheDocument()
+
+    // Not-found message must NOT appear.
+    expect(screen.queryByText(/game not found/i)).not.toBeInTheDocument()
+
+    // Board link is present.
+    expect(screen.getByText(/shared board view/i)).toBeInTheDocument()
+    expect(
+      screen.getByText((content) => content.includes(`/board/${game.id}`)),
+    ).toBeInTheDocument()
+
+    // Organiser link is present (token came from the URL).
+    expect(
+      screen.getByText((content) =>
+        content.includes(`/setup/${game.id}?t=${organiserToken}`),
+      ),
+    ).toBeInTheDocument()
+
+    // Each player name is listed.
+    for (const p of players) {
+      expect(screen.getByText(p.name)).toBeInTheDocument()
+    }
+
+    // Note about per-player links being unrecoverable.
+    expect(screen.getByText(/per-player magic links/i)).toBeInTheDocument()
+  })
+
+  it('shows a not-found message when the gameId is unknown', async () => {
+    renderSetupAt('/setup/does-not-exist?t=whatever')
+    expect(await screen.findByText(/game not found/i)).toBeInTheDocument()
+    // Wizard must not be rendered.
+    expect(screen.queryByRole('heading', { name: /set up a new game/i })).not.toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Copy handler — clipboard success / failure / unavailable
+// ---------------------------------------------------------------------------
+
+interface ClipboardLike {
+  writeText: (text: string) => Promise<void>
+}
+
+function setClipboard(value: ClipboardLike | undefined): void {
+  Object.defineProperty(navigator, 'clipboard', {
+    value,
+    configurable: true,
+    writable: true,
+  })
+}
+
+describe('SetupPage — share-link copy handler', () => {
+  // Save & restore navigator.clipboard between tests so we don't leak state.
+  let originalClipboard: PropertyDescriptor | undefined
+
+  beforeEach(() => {
+    originalClipboard = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+  })
+
+  afterEach(() => {
+    if (originalClipboard) {
+      Object.defineProperty(navigator, 'clipboard', originalClipboard)
+    } else {
+      // jsdom started without a clipboard prop — remove what we added.
+      delete (navigator as { clipboard?: unknown }).clipboard
+    }
+  })
+
+  /**
+   * Drive the wizard to the success screen so a real ShareLinkRow exists.
+   * Returns a userEvent instance for the caller to keep clicking with.
+   *
+   * IMPORTANT: `userEvent.setup()` installs its own clipboard stub on
+   * `navigator.clipboard`. We must call any test-specific `setClipboard(...)`
+   * AFTER this helper returns so our mock isn't clobbered.
+   */
+  async function mountSuccessScreen(): Promise<ReturnType<typeof userEvent.setup>> {
+    const user = userEvent.setup()
+    renderSetup()
+
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+    await user.click(screen.getByRole('switch', { name: /randomize teams/i }))
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+    await user.click(screen.getByRole('button', { name: /select all in core set/i }))
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+    await user.click(screen.getByRole('button', { name: /^next$/i }))
+    await user.click(screen.getByRole('button', { name: /generate game/i }))
+
+    expect(await screen.findByText(/game created/i)).toBeInTheDocument()
+    return user
+  }
+
+  it('shows "Copied!" after a successful clipboard write', async () => {
+    const user = await mountSuccessScreen()
+
+    // Override user-event's clipboard stub AFTER setup so our spy is the one
+    // that gets called by the component.
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    setClipboard({ writeText })
+
+    const copyButtons = screen.getAllByRole('button', { name: /copy .* link/i })
+    expect(copyButtons.length).toBeGreaterThan(0)
+
+    await user.click(copyButtons[0]!)
+
+    expect(writeText).toHaveBeenCalledTimes(1)
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining('/board/'))
+    expect(await screen.findByText(/^copied!$/i)).toBeInTheDocument()
+  })
+
+  it('shows the fallback message when writeText rejects', async () => {
+    const user = await mountSuccessScreen()
+
+    const writeText = vi.fn().mockRejectedValue(new Error('denied'))
+    setClipboard({ writeText })
+
+    const copyButtons = screen.getAllByRole('button', { name: /copy .* link/i })
+    await user.click(copyButtons[0]!)
+
+    expect(writeText).toHaveBeenCalledTimes(1)
+    expect(await screen.findByText(/copy failed/i)).toBeInTheDocument()
+  })
+
+  it('disables Copy when navigator.clipboard is unavailable', async () => {
+    // Seed a real game so the dashboard view has share rows to render.
+    const { game, organiserToken } = await gameStore.createGame({
+      playerCount: 4,
+      method: 'snake',
+      heroPool: HERO_PACKS[0]!.heroIds.slice(0, 4),
+      players: [
+        { name: 'Ada', team: 'red', seat: 0 },
+        { name: 'Bea', team: 'red', seat: 1 },
+        { name: 'Cal', team: 'blue', seat: 2 },
+        { name: 'Dax', team: 'blue', seat: 3 },
+      ],
+    })
+
+    // Remove navigator.clipboard *before* rendering. Because we never call
+    // `userEvent.setup()` in this test, no clipboard stub is installed.
+    setClipboard(undefined)
+
+    renderSetupAt(`/setup/${game.id}?t=${organiserToken}`)
+
+    // Wait for the dashboard to finish loading the snapshot.
+    expect(await screen.findByText(/organiser dashboard/i)).toBeInTheDocument()
+
+    const copyButtons = screen.getAllByRole('button', { name: /copy .* link/i })
+    expect(copyButtons.length).toBeGreaterThan(0)
+    for (const btn of copyButtons) {
+      expect(btn).toBeDisabled()
+    }
+  })
+})
