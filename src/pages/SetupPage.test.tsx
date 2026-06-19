@@ -44,41 +44,33 @@ describe('SetupPage — Step 1 (Players)', () => {
 })
 
 describe('SetupPage — Step 2 (Teams)', () => {
-  it('randomize splits players into two equal teams', async () => {
+  it('randomise splits players into two equal teams and enables Next', async () => {
     const user = userEvent.setup()
     renderSetup()
     // Advance to step 2.
     await user.click(screen.getByRole('button', { name: /^next$/i }))
 
-    // Selecting the "Randomize teams" chip auto-randomizes.
-    await user.click(screen.getByRole('switch', { name: /randomize teams/i }))
+    // Next is blocked until teams are drawn.
+    expect(screen.getByRole('button', { name: /^next$/i })).toBeDisabled()
 
-    // Status row should report balanced 2-2.
-    const status = screen.getByRole('status')
-    expect(status.textContent).toMatch(/Red:\s*2/)
-    expect(status.textContent).toMatch(/Blue:\s*2/)
-    expect(status.textContent).toMatch(/balanced/i)
+    // Click the single Randomise button.
+    await user.click(screen.getByRole('button', { name: /randomise teams/i }))
 
-    // Next button enabled.
+    // Both team panels appear with 2 players each (4 named players total listed).
+    expect(screen.getByText(/red team/i)).toBeInTheDocument()
+    expect(screen.getByText(/blue team/i)).toBeInTheDocument()
+
+    // Next button is now enabled.
     expect(screen.getByRole('button', { name: /^next$/i })).not.toBeDisabled()
   })
 
-  it('manual unequal teams blocks Next with a validation message', async () => {
+  it('blocks Next until teams have been randomised', async () => {
     const user = userEvent.setup()
     renderSetup()
-    // Advance to step 2.
     await user.click(screen.getByRole('button', { name: /^next$/i }))
 
-    await user.click(screen.getByRole('switch', { name: /assign manually/i }))
-
-    // Assign all 4 players to Red — unbalanced.
-    const redChips = screen.getAllByRole('switch', { name: 'Red' })
-    expect(redChips).toHaveLength(4)
-    for (const chip of redChips) {
-      await user.click(chip)
-    }
-
-    expect(screen.getByTestId('step-validation')).toHaveTextContent(/teams must be balanced/i)
+    // Before randomising, the prompt is shown and Next is disabled.
+    expect(screen.getByRole('status')).toHaveTextContent(/randomise teams/i)
     expect(screen.getByRole('button', { name: /^next$/i })).toBeDisabled()
   })
 })
@@ -91,7 +83,7 @@ describe('SetupPage — Step 3 (Hero pool)', () => {
     // Step 1 → Step 2.
     await user.click(screen.getByRole('button', { name: /^next$/i }))
     // Randomize teams to satisfy step 2.
-    await user.click(screen.getByRole('switch', { name: /randomize teams/i }))
+    await user.click(screen.getByRole('button', { name: /randomise teams/i }))
     // Step 2 → Step 3.
     await user.click(screen.getByRole('button', { name: /^next$/i }))
 
@@ -120,14 +112,14 @@ describe('SetupPage — Step 3 (Hero pool)', () => {
 })
 
 describe('SetupPage — Step 5 (Generate)', () => {
-  it('generates a game and renders share links containing /board/ and /play/', async () => {
+  it('generates a game and renders share links: a shared board link plus per-player links', async () => {
     const user = userEvent.setup()
     renderSetup()
 
     // Step 1 → 2
     await user.click(screen.getByRole('button', { name: /^next$/i }))
-    // Randomize teams
-    await user.click(screen.getByRole('switch', { name: /randomize teams/i }))
+    // Randomise teams
+    await user.click(screen.getByRole('button', { name: /randomise teams/i }))
     // Step 2 → 3
     await user.click(screen.getByRole('button', { name: /^next$/i }))
     // Select Core pack
@@ -143,9 +135,9 @@ describe('SetupPage — Step 5 (Generate)', () => {
     // Results panel.
     expect(await screen.findByText(/game created/i)).toBeInTheDocument()
 
-    // A board link is shown — match any element whose text contains /board/<id>.
+    // The shared board link points at /play/<id> WITHOUT a token.
     expect(
-      screen.getByText((content) => /\/board\/[a-z0-9-]+/i.test(content)),
+      screen.getByText((content) => /\/play\/[a-z0-9-]+$/i.test(content)),
     ).toBeInTheDocument()
 
     // 4 player links are shown (one per player), each containing /play/ and a token.
@@ -190,7 +182,7 @@ describe('SetupPage — organiser dashboard', () => {
     // Board link is present.
     expect(screen.getByText(/shared board view/i)).toBeInTheDocument()
     expect(
-      screen.getByText((content) => content.includes(`/board/${game.id}`)),
+      screen.getByText((content) => content.includes(`/play/${game.id}`)),
     ).toBeInTheDocument()
 
     // Organiser link is present (token came from the URL).
@@ -263,7 +255,7 @@ describe('SetupPage — share-link copy handler', () => {
     renderSetup()
 
     await user.click(screen.getByRole('button', { name: /^next$/i }))
-    await user.click(screen.getByRole('switch', { name: /randomize teams/i }))
+    await user.click(screen.getByRole('button', { name: /randomise teams/i }))
     await user.click(screen.getByRole('button', { name: /^next$/i }))
     await user.click(screen.getByRole('button', { name: /select all in core set/i }))
     await user.click(screen.getByRole('button', { name: /^next$/i }))
@@ -288,7 +280,7 @@ describe('SetupPage — share-link copy handler', () => {
     await user.click(copyButtons[0]!)
 
     expect(writeText).toHaveBeenCalledTimes(1)
-    expect(writeText).toHaveBeenCalledWith(expect.stringContaining('/board/'))
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining('/play/'))
     expect(await screen.findByText(/^copied!$/i)).toBeInTheDocument()
   })
 

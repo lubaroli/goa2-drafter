@@ -94,12 +94,13 @@ See the comments at the top of [`supabase/schema.sql`](./supabase/schema.sql) fo
 | -------------------------------- | ----------------------------------------------------------------------------- |
 | `/`                              | Home — create a new game.                                                     |
 | `/setup/:gameId?t=<token>`       | Organiser's setup wizard (players → teams → pool → method → generate links). |
-| `/play/:gameId?t=<playerToken>`  | A single player's private draft screen with their magic-link token.           |
-| `/board/:gameId`                 | Shared, read-only live board (great for projecting to a TV).                  |
+| `/play/:gameId?t=<playerToken>`  | A player's draft screen — board + hero selector to pick on their turn.        |
+| `/play/:gameId`                  | Same page WITHOUT a token: a shared, read-only live board (great for a TV).    |
+| `/board/:gameId`                 | Legacy alias — redirects to `/play/:gameId`.                                  |
 
 ### Magic links
 
-When the organiser finishes setup, the app generates one magic link per player (`/play/:gameId?t=<token>`). Anyone with the link is that player; anyone with the board link can watch.
+When the organiser finishes setup, the app generates one magic link per player (`/play/:gameId?t=<token>`). Anyone with the link is that player; the same URL without the `?t=` token is the shared read-only board for spectators.
 
 ### Snake order
 

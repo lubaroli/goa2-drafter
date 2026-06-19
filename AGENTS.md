@@ -63,8 +63,7 @@ goa2-drafter/
 │   ├── pages/
 │   │   ├── HomePage.tsx
 │   │   ├── SetupPage.tsx       # organiser wizard
-│   │   ├── PlayerPage.tsx      # one player's private draft screen
-│   │   ├── BoardPage.tsx       # shared read-only board
+│   │   ├── GamePage.tsx       # board (no token) + player draft screen (with ?t=)
 │   │   └── NotFoundPage.tsx
 │   ├── hooks/                  # useGame, useHeroFilters, ...
 │   ├── services/

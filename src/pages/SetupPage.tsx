@@ -40,8 +40,6 @@ import { Button, Card, Chip, cn } from '@/components/ui'
 const PLAYER_COUNTS = [4, 6, 8, 10] as const
 type PlayerCount = (typeof PLAYER_COUNTS)[number]
 
-type TeamMode = 'random' | 'manual'
-
 interface PlayerDraft {
   name: string
   team: TeamId | null
@@ -134,19 +132,17 @@ function Step1Players({
 // ---------------------------------------------------------------------------
 
 interface Step2Props {
-  teamMode: TeamMode
-  setTeamMode: (m: TeamMode) => void
   players: PlayerDraft[]
   setPlayers: (next: PlayerDraft[]) => void
 }
 
-function Step2Teams({ teamMode, setTeamMode, players, setPlayers }: Step2Props): JSX.Element {
+function Step2Teams({ players, setPlayers }: Step2Props): JSX.Element {
   const redCount = players.filter((p) => p.team === 'red').length
   const blueCount = players.filter((p) => p.team === 'blue').length
   const target = players.length / 2
   const balanced = redCount === target && blueCount === target
 
-  const randomize = (): void => {
+  const randomise = (): void => {
     const indexes = shuffleArray(players.map((_, i) => i))
     const half = players.length / 2
     const next = players.map((p) => ({ ...p, team: null as TeamId | null }))
@@ -157,79 +153,56 @@ function Step2Teams({ teamMode, setTeamMode, players, setPlayers }: Step2Props):
     setPlayers(next)
   }
 
+  const redPlayers = players.filter((p) => p.team === 'red')
+  const bluePlayers = players.filter((p) => p.team === 'blue')
+
   return (
     <Card>
-      <h2 className="mb-4 text-xl font-semibold text-teal-300">Step 2 — Teams</h2>
-      <div className="mb-6 flex flex-wrap gap-2">
-        <Chip
-          label="Randomize teams"
-          selected={teamMode === 'random'}
-          onClick={() => {
-            setTeamMode('random')
-            randomize()
-          }}
-        />
-        <Chip
-          label="Assign manually"
-          selected={teamMode === 'manual'}
-          onClick={() => {
-            setTeamMode('manual')
-          }}
-        />
-        {teamMode === 'random' && (
-          <Button variant="secondary" size="sm" onClick={randomize}>
-            Re-randomize
-          </Button>
-        )}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-xl font-semibold text-teal-300">Step 2 — Teams</h2>
+        <Button variant="secondary" size="sm" onClick={randomise}>
+          {balanced ? 'Randomise again' : 'Randomise teams'}
+        </Button>
       </div>
+      <p className="mb-6 text-sm text-slate-400">
+        Teams are split evenly at random. Hit randomise until you&apos;re happy with the draw.
+      </p>
 
-      <div className="space-y-2">
-        {players.map((p, i) => (
-          <div
-            key={i}
-            className="flex items-center justify-between gap-3 rounded-md border border-slate-700 bg-slate-900/50 p-3"
-          >
-            <span className="font-medium text-slate-200">{p.name || `Player ${i + 1}`}</span>
-            <div className="flex gap-2">
-              <Chip
-                label="Red"
-                tone="red"
-                selected={p.team === 'red'}
-                onClick={() => {
-                  if (teamMode !== 'manual') return
-                  const next = players.slice()
-                  next[i] = { ...p, team: 'red' }
-                  setPlayers(next)
-                }}
-              />
-              <Chip
-                label="Blue"
-                tone="blue"
-                selected={p.team === 'blue'}
-                onClick={() => {
-                  if (teamMode !== 'manual') return
-                  const next = players.slice()
-                  next[i] = { ...p, team: 'blue' }
-                  setPlayers(next)
-                }}
-              />
-            </div>
+      {balanced ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="rounded-lg border border-red-800/60 bg-red-950/30 p-3">
+            <h3 className="mb-2 text-sm font-semibold uppercase tracking-wider text-red-300">
+              Red team
+            </h3>
+            <ul className="space-y-1">
+              {redPlayers.map((p, i) => (
+                <li key={i} className="text-sm text-slate-200">
+                  {p.name || 'Unnamed player'}
+                </li>
+              ))}
+            </ul>
           </div>
-        ))}
-      </div>
-
-      <div
-        className={cn(
-          'mt-4 rounded-md border p-3 text-sm',
-          balanced
-            ? 'border-teal-700 bg-teal-950/40 text-teal-200'
-            : 'border-amber-700 bg-amber-950/40 text-amber-200',
-        )}
-        role="status"
-      >
-        Red: {redCount} &middot; Blue: {blueCount}{' '}
-        {balanced ? '— teams are balanced.' : `— each team needs ${target} players.`}
-      </div>
+          <div className="rounded-lg border border-blue-800/60 bg-blue-950/30 p-3">
+            <h3 className="mb-2 text-sm font-semibold uppercase tracking-wider text-blue-300">
+              Blue team
+            </h3>
+            <ul className="space-y-1">
+              {bluePlayers.map((p, i) => (
+                <li key={i} className="text-sm text-slate-200">
+                  {p.name || 'Unnamed player'}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      ) : (
+        <div
+          className="rounded-md border border-amber-700 bg-amber-950/40 p-3 text-sm text-amber-200"
+          role="status"
+        >
+          Hit “Randomise teams” to split the {players.length} players into two even teams.
+        </div>
+      )}
     </Card>
   )
 }
@@ -262,6 +235,17 @@ function Step3HeroPool({ selected, setSelected, minimum }: Step3Props): JSX.Elem
     setSelected(next)
   }
 
+  const allHeroIds = useMemo(() => HERO_PACKS.flatMap((pack) => pack.heroIds), [])
+  const allSelected = allHeroIds.length > 0 && allHeroIds.every((id) => selected.has(id))
+
+  const selectAll = (): void => {
+    setSelected(new Set(allHeroIds))
+  }
+
+  const clearAll = (): void => {
+    setSelected(new Set())
+  }
+
   const enough = selected.size >= minimum
 
   return (
@@ -269,19 +253,33 @@ function Step3HeroPool({ selected, setSelected, minimum }: Step3Props): JSX.Elem
       <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-xl font-semibold text-teal-300">Step 3 — Hero pool</h2>
         <p
-          className={cn(
-            'text-sm font-medium',
-            enough ? 'text-teal-300' : 'text-amber-300',
-          )}
+          className={cn('text-sm font-medium', enough ? 'text-teal-300' : 'text-amber-300')}
           aria-live="polite"
         >
           Selected {selected.size} / need &gt;= {minimum}
         </p>
       </div>
       <p className="mb-4 text-sm text-slate-400">
-        Toggle whole packs or individual heroes. A small buffer over the minimum keeps the draft
-        interesting.
+        Add every hero, whole packs, or pick individuals. A small buffer over the minimum keeps the
+        draft interesting.
       </p>
+
+      <div className="mb-5 flex flex-wrap gap-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={allSelected ? clearAll : selectAll}
+          aria-label={allSelected ? 'Clear all heroes' : 'Select all heroes'}
+        >
+          {allSelected ? 'Clear all heroes' : 'Select all heroes'}
+        </Button>
+        {selected.size > 0 && !allSelected && (
+          <Button variant="ghost" size="sm" onClick={clearAll} aria-label="Clear all heroes">
+            Clear all
+          </Button>
+        )}
+      </div>
+
       <div className="space-y-5">
         {HERO_PACKS.map((pack) => {
           const allOn =
@@ -477,7 +475,7 @@ function WizardSuccess({ created }: WizardSuccessProps): JSX.Element {
       </p>
 
       <h3 className="mt-4 mb-2 font-semibold text-slate-100">Board</h3>
-      <ShareLinkRow label="Shared board view" path={`/board/${game.id}`} />
+      <ShareLinkRow label="Shared board view" path={`/play/${game.id}`} />
 
       <h3 className="mt-6 mb-2 font-semibold text-slate-100">
         {game.method === 'random' ? 'Player links (heroes already assigned)' : 'Player links'}
@@ -575,7 +573,7 @@ function OrganiserDashboard({ gameId, organiserToken }: OrganiserDashboardProps)
       </p>
 
       <h3 className="mt-4 mb-2 font-semibold text-slate-100">Board</h3>
-      <ShareLinkRow label="Shared board view" path={`/board/${snapshot.game.id}`} />
+      <ShareLinkRow label="Shared board view" path={`/play/${snapshot.game.id}`} />
 
       <h3 className="mt-6 mb-2 font-semibold text-slate-100">Organiser</h3>
       {organiserToken ? (
@@ -632,7 +630,6 @@ function SetupWizard(): JSX.Element {
   const [step, setStep] = useState(0)
   const [playerCount, setPlayerCountState] = useState<PlayerCount>(4)
   const [players, setPlayers] = useState<PlayerDraft[]>(() => buildInitialPlayers(4))
-  const [teamMode, setTeamMode] = useState<TeamMode>('random')
   const [selectedHeroes, setSelectedHeroes] = useState<Set<string>>(new Set())
   const [method, setMethod] = useState<DraftMethod>('snake')
   const [created, setCreated] = useState<CreatedGame | null>(null)
@@ -702,14 +699,7 @@ function SetupWizard(): JSX.Element {
           />
         )
       case 1:
-        return (
-          <Step2Teams
-            teamMode={teamMode}
-            setTeamMode={setTeamMode}
-            players={players}
-            setPlayers={setPlayers}
-          />
-        )
+        return <Step2Teams players={players} setPlayers={setPlayers} />
       case 2:
         return (
           <Step3HeroPool

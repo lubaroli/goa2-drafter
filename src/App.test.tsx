@@ -34,16 +34,23 @@ describe('AppRoutes', () => {
     expect(screen.getByRole('link', { name: /back to home/i })).toHaveAttribute('href', '/')
   })
 
-  it("renders BoardPage (not the global 404) for /board/:gameId even when the game doesn't exist", async () => {
+  it('redirects /board/:gameId to /play/:gameId (GamePage), not the global 404', async () => {
     renderAt('/board/unknownid')
-    // BoardPage shows its own "Game not found" card with the requested gameId,
-    // which is distinct from the global NotFoundPage (which has no game code).
+    // /board now redirects to /play; GamePage shows its own "Game not found"
+    // card, which is distinct from the global NotFoundPage.
     expect(
       await screen.findByRole('heading', { name: /game not found/i, level: 1 }),
     ).toBeInTheDocument()
-    expect(screen.getByText('unknownid')).toBeInTheDocument()
     // Sanity check: the global 404 page is *not* rendered.
     expect(screen.queryByText('404')).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /back to home/i })).not.toBeInTheDocument()
+  })
+
+  it('renders GamePage (not the global 404) for /play/:gameId when the game does not exist', async () => {
+    renderAt('/play/unknownid')
+    expect(
+      await screen.findByRole('heading', { name: /game not found/i, level: 1 }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('404')).not.toBeInTheDocument()
   })
 })

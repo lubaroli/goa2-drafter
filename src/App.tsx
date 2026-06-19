@@ -1,12 +1,21 @@
 import type { JSX } from 'react'
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
 
 import { ErrorBoundary } from '@/components/ErrorBoundary'
-import { BoardPage } from '@/pages/BoardPage'
+import { GamePage } from '@/pages/GamePage'
 import { HomePage } from '@/pages/HomePage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
-import { PlayerPage } from '@/pages/PlayerPage'
 import { SetupPage } from '@/pages/SetupPage'
+
+/**
+ * Legacy `/board/:gameId` redirect. The board and player draft screens are now
+ * a single `GamePage` at `/play/:gameId`; without a `?t=` token it renders the
+ * read-only board view. Old board links keep working.
+ */
+function BoardRedirect(): JSX.Element {
+  const { gameId } = useParams<{ gameId: string }>()
+  return <Navigate to={`/play/${gameId ?? ''}`} replace />
+}
 
 /**
  * Route table for the app. Exported separately from the default `App` so tests
@@ -19,8 +28,8 @@ export function AppRoutes(): JSX.Element {
       <Route path="/" element={<HomePage />} />
       <Route path="/setup" element={<SetupPage />} />
       <Route path="/setup/:gameId" element={<SetupPage />} />
-      <Route path="/play/:gameId" element={<PlayerPage />} />
-      <Route path="/board/:gameId" element={<BoardPage />} />
+      <Route path="/play/:gameId" element={<GamePage />} />
+      <Route path="/board/:gameId" element={<BoardRedirect />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   )
