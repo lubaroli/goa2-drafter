@@ -704,3 +704,43 @@ end $$;
 
 alter table public.games  replica identity full;
 alter table public.picks  replica identity full;
+
+-- ---------------------------------------------------------------------------
+-- delete_old_games RPC (housekeeping)
+-- ---------------------------------------------------------------------------
+--
+-- Deletes games older than `p_max_age_days` (deletes cascade to players +
+-- picks). Called on a daily schedule by `.github/workflows/cleanup.yml`, which
+-- doubles as a keep-alive ping so the free-tier project never pauses.
+--
+-- SECURITY: the function is anon-callable (the cleanup workflow uses the public
+-- anon key). To make that safe, the age is CLAMPED to a minimum of 1 day, so a
+-- caller can never use it to wipe recent/active games — only genuinely
+-- abandoned ones. Returns the number of games removed.
+
+create or replace function public.delete_old_games(p_max_age_days int default 7)
+returns int
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_age_days int;
+  v_deleted  int;
+begin
+  -- Floor at 1 day regardless of caller input: never delete recent games.
+  v_age_days := greatest(coalesce(p_max_age_days, 7), 1);
+
+  with removed as (
+    delete from public.games
+    where created_at < now() - make_interval(days => v_age_days)
+    returning id
+  )
+  select count(*) into v_deleted from removed;
+
+  return v_deleted;
+end;
+$$;
+
+grant execute on function public.delete_old_games(int) to anon, authenticated;
+

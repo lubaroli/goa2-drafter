@@ -1,0 +1,64 @@
+# Daily housekeeping: delete games older than 7 days (cascades to players +
+# picks) by calling the `delete_old_games` Supabase RPC. This also pings the
+# project every day, which keeps the free-tier Supabase instance from pausing
+# after 7 days of inactivity.
+#
+# Requires the same repository secrets used by the deploy workflow:
+#   - VITE_SUPABASE_URL
+#   - VITE_SUPABASE_ANON_KEY
+# If either secret is unset (e.g. running in local-only mode), the job no-ops
+# with a clear message instead of failing.
+
+name: Cleanup old games
+
+on:
+  schedule:
+    # 03:17 UTC daily (off-peak; minute offset avoids the top-of-hour rush).
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+    inputs:
+      max_age_days:
+        description: 'Delete games older than this many days (min 1)'
+        required: false
+        default: '7'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    name: Delete old games
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call delete_old_games RPC
+        env:
+          SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          MAX_AGE_DAYS: ${{ github.event.inputs.max_age_days || '7' }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "Supabase secrets not set — skipping cleanup (local-only mode)."
+            exit 0
+          fi
+
+          echo "Deleting games older than ${MAX_AGE_DAYS} day(s)…"
+          response=$(curl -sS -w '\n%{http_code}' \
+            -X POST "${SUPABASE_URL}/rest/v1/rpc/delete_old_games" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "{\"p_max_age_days\": ${MAX_AGE_DAYS}}")
+
+          body=$(echo "$response" | sed '$d')
+          code=$(echo "$response" | tail -n1)
+
+          echo "HTTP ${code}: ${body}"
+          if [ "$code" != "200" ]; then
+            echo "::error::Cleanup RPC failed (HTTP ${code})"
+            exit 1
+          fi
+          echo "Deleted ${body} game(s)."
