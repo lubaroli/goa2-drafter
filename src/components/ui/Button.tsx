@@ -13,7 +13,7 @@ const VARIANT_CLASSES: Record<NonNullable<ButtonProps['variant']>, string> = {
   secondary:
     'bg-slate-700 text-slate-100 hover:bg-slate-600 active:bg-slate-800 focus-visible:ring-slate-400 border border-slate-600',
   ghost:
-    'bg-transparent text-slate-200 hover:bg-slate-800 active:bg-slate-900 focus-visible:ring-slate-500',
+    'bg-slate-800/60 text-slate-200 backdrop-blur-sm hover:bg-slate-700/80 active:bg-slate-900/80 focus-visible:ring-slate-500 border border-slate-600/50',
   danger:
     'bg-red-600 text-white hover:bg-red-500 active:bg-red-700 focus-visible:ring-red-400 shadow-md shadow-red-900/30',
 }

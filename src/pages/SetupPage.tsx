@@ -17,6 +17,8 @@ import { HEROES } from '@/data/heroes'
 import { minimumPoolSize } from '@/services/draft'
 import { gameStore } from '@/services/store'
 import { shuffleArray } from '@/utils/shuffle'
+import { packImageUrl } from '@/utils/heroArt'
+import { AppBackground } from '@/components/AppBackground'
 import { Button, Card, Chip, cn } from '@/components/ui'
 
 // ---------------------------------------------------------------------------
@@ -299,34 +301,53 @@ function Step3HeroPool({ selected, setSelected, minimum, method }: Step3Props): 
         {HERO_PACKS.map((pack) => {
           const allOn = pack.heroIds.length > 0 && pack.heroIds.every((id) => selected.has(id))
           return (
-            <div key={pack.id} className="rounded-lg border border-slate-700 p-3">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <h3 className="font-semibold text-slate-100">{pack.name}</h3>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => {
-                    togglePack(pack.heroIds, allOn)
-                  }}
-                  aria-label={`${allOn ? 'Deselect' : 'Select'} all in ${pack.name}`}
-                >
-                  {allOn ? 'Deselect all' : 'Select all'}
-                </Button>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {pack.heroIds.map((id) => {
-                  const name = HERO_NAMES_BY_ID.get(id) ?? id
-                  return (
-                    <Chip
-                      key={id}
-                      label={name}
-                      selected={selected.has(id)}
-                      onClick={() => {
-                        toggleHero(id)
-                      }}
-                    />
-                  )
-                })}
+            <div
+              key={pack.id}
+              className="relative overflow-hidden rounded-lg border border-slate-700 bg-slate-900/40"
+            >
+              {/* Pack illustration fills the whole card; the overlay keeps the
+                  hero chips legible on top. */}
+              <div
+                aria-hidden="true"
+                className="absolute inset-0 bg-cover bg-center opacity-25"
+                style={{ backgroundImage: `url(${packImageUrl(pack.id)})` }}
+              />
+              <div
+                aria-hidden="true"
+                className="absolute inset-0 bg-gradient-to-r from-slate-950/92 via-slate-950/75 to-slate-950/55"
+              />
+
+              <div className="relative z-10 p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h3 className="font-semibold text-slate-100 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)]">
+                    {pack.name}
+                  </h3>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      togglePack(pack.heroIds, allOn)
+                    }}
+                    aria-label={`${allOn ? 'Deselect' : 'Select'} all in ${pack.name}`}
+                  >
+                    {allOn ? 'Deselect all' : 'Select all'}
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {pack.heroIds.map((id) => {
+                    const name = HERO_NAMES_BY_ID.get(id) ?? id
+                    return (
+                      <Chip
+                        key={id}
+                        label={name}
+                        selected={selected.has(id)}
+                        onClick={() => {
+                          toggleHero(id)
+                        }}
+                      />
+                    )
+                  })}
+                </div>
               </div>
             </div>
           )
@@ -764,7 +785,8 @@ function SetupWizard(): JSX.Element {
 
 export function SetupPage(): JSX.Element {
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
+    <div className="min-h-screen text-slate-100">
+      <AppBackground variant="muted" />
       <div className="mx-auto max-w-3xl px-6 py-10">
         <SetupWizard />
       </div>

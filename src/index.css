@@ -1,8 +1,27 @@
 @import "tailwindcss";
 
+/* Tailwind v4 theme tokens: `font-sans` (default body) + `font-display`
+   (headings / titles, echoing the engraved GoA2 logo). */
+@theme {
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    sans-serif;
+  --font-display: 'Cinzel', 'Inter', serif;
+}
+
 :root {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-sans);
   color-scheme: dark;
+}
+
+/* Headings carry the thematic display face (Cinzel) by default, echoing the
+   engraved GoA2 logo. Body text stays Inter. Add `font-sans` on a heading to
+   opt back out where needed. */
+@layer base {
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+  }
 }
 
 body {

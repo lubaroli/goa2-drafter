@@ -8,6 +8,16 @@ export function heroImageUrl(imageId: string): string {
   return `${import.meta.env.BASE_URL}heroes/${imageId}.png`
 }
 
+/** Returns the public URL for a hero-pack illustration (keyed by pack id). */
+export function packImageUrl(packId: string): string {
+  return `${import.meta.env.BASE_URL}packs/${packId}.webp`
+}
+
+/** Returns the public URL for a general art asset under /art. */
+export function artUrl(name: string): string {
+  return `${import.meta.env.BASE_URL}art/${name}`
+}
+
 /**
  * Deterministic FNV-1a-ish 32-bit hash of a string. Pure helper used by
  * `heroPlaceholderStyle` so the same id always produces the same colours.

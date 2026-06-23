@@ -43,7 +43,7 @@ export default function App(): JSX.Element {
   return (
     <BrowserRouter basename={basename}>
       <ErrorBoundary>
-        <div className="min-h-screen bg-slate-950 text-slate-100">
+        <div className="min-h-screen text-slate-100">
           <AppRoutes />
         </div>
       </ErrorBoundary>

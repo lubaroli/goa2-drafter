@@ -15,6 +15,7 @@ import { heroesPerTeam } from '@/services/draft'
 import { HeroSelector } from '@/components/HeroSelector'
 import { TeamRoster } from '@/components/TeamRoster'
 import { Card, cn } from '@/components/ui'
+import { AppBackground } from '@/components/AppBackground'
 
 /**
  * GamePage — a single screen for the whole group, used at `/play/:gameId`.
@@ -458,7 +459,7 @@ export function GamePage(): JSX.Element {
     <PageShell>
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex flex-col gap-1">
-          <h1 className="text-3xl font-extrabold uppercase tracking-wide text-slate-100 sm:text-4xl">
+          <h1 className="font-display text-3xl font-extrabold uppercase tracking-wide text-slate-100 sm:text-4xl">
             Guards of Atlantis II
           </h1>
           <div className="flex items-center gap-3 text-slate-400">
@@ -563,8 +564,11 @@ export function GamePage(): JSX.Element {
 
 function PageShell({ children }: { children: React.ReactNode }): JSX.Element {
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-5 bg-slate-950 p-4 text-slate-100 sm:p-6">
-      {children}
-    </main>
+    <>
+      <AppBackground variant="muted" />
+      <main className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-5 p-4 text-slate-100 sm:p-6">
+        {children}
+      </main>
+    </>
   )
 }
