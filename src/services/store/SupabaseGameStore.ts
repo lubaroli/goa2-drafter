@@ -17,9 +17,8 @@ import type {
 import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js'
 import {
   buildAllPickTurns,
-  buildAlternatingOrder,
   buildPickBanTurns,
-  buildSnakeDraftOrder,
+  buildSnakeTurns,
   coinFlipTeam,
   dealHands,
   randomAssignment,
@@ -277,20 +276,19 @@ export class SupabaseGameStore implements GameStore {
     let hands: Record<string, string[]> = {}
 
     if (input.method === 'snake') {
-      const draftOrder = buildSnakeDraftOrder(players)
-      const byId = new Map(players.map((p) => [p.id, p]))
-      const turns: DraftTurn[] = draftOrder.map((pid) => ({
-        kind: 'pick',
-        playerId: pid,
-        team: byId.get(pid)!.team,
-      }))
+      // Snake is COLLECTIVE: turn slots are owned by a team (A,B,B,A,…), not
+      // a specific player. Any teammate may claim their team's pick turn (the
+      // acting player owns the hero — uniform across collective methods).
+      // `turns` is the single source of truth; `draftOrder` is legacy and
+      // intentionally left empty. Mirrors LocalGameStore.
+      const turns = buildSnakeTurns(players, startTeam)
       game = {
         id,
         status: 'drafting',
         playerCount: input.playerCount,
         method: 'snake',
         heroPool: [...input.heroPool],
-        draftOrder,
+        draftOrder: [],
         currentPick: 0,
         turns,
         bans: [],
@@ -325,14 +323,15 @@ export class SupabaseGameStore implements GameStore {
       }
     } else if (input.method === 'all-pick') {
       const turns = buildAllPickTurns(players, startTeam)
-      const draftOrder = buildAlternatingOrder(players, startTeam)
+      // `turns` is the single source of truth; `draftOrder` is legacy and
+      // intentionally left empty.
       game = {
         id,
         status: 'drafting',
         playerCount: input.playerCount,
         method: 'all-pick',
         heroPool: [...input.heroPool],
-        draftOrder,
+        draftOrder: [],
         currentPick: 0,
         turns,
         bans: [],
@@ -342,14 +341,15 @@ export class SupabaseGameStore implements GameStore {
     } else if (input.method === 'random-draft') {
       const trimmedPool = selectRandomDraftPool(input.heroPool, input.playerCount)
       const turns = buildAllPickTurns(players, startTeam)
-      const draftOrder = buildAlternatingOrder(players, startTeam)
+      // `turns` is the single source of truth; `draftOrder` is legacy and
+      // intentionally left empty.
       game = {
         id,
         status: 'drafting',
         playerCount: input.playerCount,
         method: 'random-draft',
         heroPool: trimmedPool,
-        draftOrder,
+        draftOrder: [],
         currentPick: 0,
         turns,
         bans: [],

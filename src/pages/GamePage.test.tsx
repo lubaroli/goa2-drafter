@@ -5,7 +5,6 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { GamePage } from './GamePage'
 import { gameStore } from '@/services/store'
 import type { CreateGameInput, DraftMethod, GameStore, Player } from '@/types'
-import { buildSnakeDraftOrder } from '@/services/draft'
 import { getHeroById } from '@/data/heroes'
 
 const clearStorage = (): void => {
@@ -56,10 +55,7 @@ const FOUR_PLAYERS: CreateGameInput['players'] = [
   { name: 'Dan', team: 'red', seat: 3 },
 ]
 
-async function createGameWith(
-  method: DraftMethod,
-  heroPool: string[],
-): Promise<CreatedGameResult> {
+async function createGameWith(method: DraftMethod, heroPool: string[]): Promise<CreatedGameResult> {
   return gameStore.createGame({
     playerCount: 4,
     method,
@@ -132,12 +128,13 @@ describe('GamePage', () => {
     expect(screen.getByLabelText('hero selector')).toBeInTheDocument()
   })
 
-  it("surfaces 'not your turn' when the wrong player tries to pick", async () => {
+  it("surfaces 'other team's turn' when a wrong-team player tries to pick (collective snake)", async () => {
     const created = await createSnakeGame()
-    // Determine the FIRST picker, then use a DIFFERENT player's token.
-    const order = buildSnakeDraftOrder(created.players)
-    const firstPickerId = order[0]
-    const wrongPlayer = created.players.find((p: Player) => p.id !== firstPickerId)!
+    // Snake is now collective: pick a player on the OTHER team than the
+    // active one, who is unambiguously not authorised.
+    const activeTeam = created.game.turns[0]!.team
+    const wrongTeam = activeTeam === 'red' ? 'blue' : 'red'
+    const wrongPlayer = created.players.find((p: Player) => p.team === wrongTeam)!
     renderAt(`/play/${created.game.id}?t=${wrongPlayer.token}`)
 
     const user = userEvent.setup()
@@ -147,14 +144,19 @@ describe('GamePage', () => {
     const pickButton = await screen.findByRole('button', { name: /pick this hero/i })
     await user.click(pickButton)
 
-    expect(await screen.findByText(/not your turn/i)).toBeInTheDocument()
+    expect(await screen.findByText(/other team's turn/i)).toBeInTheDocument()
   })
 
-  it('lets the current picker pick, advancing the board live', async () => {
+  it('lets any active-team player pick, advancing the board live (collective snake)', async () => {
     const created = await createSnakeGame()
-    const order = buildSnakeDraftOrder(created.players)
-    const firstPicker = created.players.find((p: Player) => p.id === order[0])!
-    renderAt(`/play/${created.game.id}?t=${firstPicker.token}`)
+    // Collective: any teammate on the active team may pick. Pick the
+    // lowest-seat teammate of the active team for determinism.
+    const activeTeam = created.game.turns[0]!.team
+    const activeTeamPlayers = created.players
+      .filter((p: Player) => p.team === activeTeam)
+      .sort((a: Player, b: Player) => a.seat - b.seat)
+    const acting = activeTeamPlayers[0]!
+    renderAt(`/play/${created.game.id}?t=${acting.token}`)
 
     const user = userEvent.setup()
     const domino = await screen.findByRole('button', { name: /arien the tidemaster/i })
@@ -167,13 +169,15 @@ describe('GamePage', () => {
     await waitFor(() => {
       expect(screen.getByTestId('pick-progress')).toHaveTextContent(/pick 1 of 4/i)
     })
+
+    // The acting player owns the hero on the roster.
+    const slot = screen.getByTestId(`roster-slot-${acting.id}`)
+    expect(within(slot).getByText(/arien the tidemaster/i)).toBeInTheDocument()
   })
 
   it('shows a not-found message for an unknown game id', async () => {
     renderAt('/play/does-not-exist')
-    expect(
-      await screen.findByRole('heading', { name: /game not found/i }),
-    ).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: /game not found/i })).toBeInTheDocument()
   })
 
   // -------------------------------------------------------------------------
@@ -181,18 +185,41 @@ describe('GamePage', () => {
   // -------------------------------------------------------------------------
 
   describe('all-pick', () => {
-    it("banner shows 'PICK' + the active player's name; selector is visible", async () => {
+    it("banner shows 'PICK' + the active team (collective; no single player name); selector is visible", async () => {
       const created = await createGameWith('all-pick', POOL)
       const firstTurn = created.game.turns[0]!
-      const firstPicker = created.players.find((p: Player) => p.id === firstTurn.playerId)!
-      renderAt(`/play/${created.game.id}?t=${firstPicker.token}`)
+      // All-pick turns are now COLLECTIVE — playerId is null.
+      expect(firstTurn.playerId).toBeNull()
+      // Any player on the active team can pick; render as one of them so the
+      // selector is visible (token holder, active draft).
+      const activeTeamPlayer = created.players.find((p: Player) => p.team === firstTurn.team)!
+      renderAt(`/play/${created.game.id}?t=${activeTeamPlayer.token}`)
 
-      // Banner: PICK action + the player's name in the team-coloured span.
+      // Banner: PICK action + team label (NOT a single player name).
       const banner = await screen.findByTestId('on-the-clock-banner')
       expect(within(banner).getByTestId('turn-action')).toHaveTextContent(/^PICK$/)
-      expect(within(banner).getByTestId('current-pick-banner')).toHaveTextContent(firstPicker.name)
+      expect(within(banner).getByTestId('current-pick-banner')).toHaveTextContent(/team/i)
+      expect(within(banner).getByTestId('current-pick-banner')).not.toHaveTextContent(
+        activeTeamPlayer.name,
+      )
       // Selector visible (token holder, active draft).
       expect(screen.getByLabelText('hero selector')).toBeInTheDocument()
+    })
+
+    it("rejects an all-pick attempt by a wrong-team player with the 'other team's turn' message", async () => {
+      const created = await createGameWith('all-pick', POOL)
+      const firstTurn = created.game.turns[0]!
+      const otherTeam = firstTurn.team === 'red' ? 'blue' : 'red'
+      const wrongTeamPlayer = created.players.find((p: Player) => p.team === otherTeam)!
+      renderAt(`/play/${created.game.id}?t=${wrongTeamPlayer.token}`)
+
+      const user = userEvent.setup()
+      const firstHeroId = created.game.heroPool[0]!
+      const firstHero = getHeroById(firstHeroId)!
+      await user.click(await screen.findByRole('button', { name: firstHero.name }))
+      await user.click(await screen.findByRole('button', { name: /pick this hero/i }))
+
+      expect(await screen.findByText(/other team's turn/i)).toBeInTheDocument()
     })
   })
 
@@ -203,9 +230,7 @@ describe('GamePage', () => {
       expect(firstTurn.kind).toBe('ban')
       expect(firstTurn.playerId).toBeNull()
 
-      const activeTeamPlayer = created.players.find(
-        (p: Player) => p.team === firstTurn.team,
-      )!
+      const activeTeamPlayer = created.players.find((p: Player) => p.team === firstTurn.team)!
       renderAt(`/play/${created.game.id}?t=${activeTeamPlayer.token}`)
 
       const banner = await screen.findByTestId('on-the-clock-banner')
@@ -221,17 +246,13 @@ describe('GamePage', () => {
       const firstHeroId = created.game.heroPool[0]!
       const firstHero = getHeroById(firstHeroId)!
       await user.click(screen.getByRole('button', { name: firstHero.name }))
-      expect(
-        await screen.findByRole('button', { name: /ban this hero/i }),
-      ).toBeInTheDocument()
+      expect(await screen.findByRole('button', { name: /ban this hero/i })).toBeInTheDocument()
     })
 
     it("banning advances the banner and lists the hero under 'Bans'; that hero is then disabled", async () => {
       const created = await createGameWith('pick-and-ban', LARGE_POOL)
       const firstTurn = created.game.turns[0]!
-      const activeTeamPlayer = created.players.find(
-        (p: Player) => p.team === firstTurn.team,
-      )!
+      const activeTeamPlayer = created.players.find((p: Player) => p.team === firstTurn.team)!
       renderAt(`/play/${created.game.id}?t=${activeTeamPlayer.token}`)
 
       const user = userEvent.setup()

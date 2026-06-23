@@ -1,30 +1,6 @@
 import type { DraftMethod, DraftTurn, Player, TeamId } from '@/types'
 
 /**
- * Determine which team picks first ("A"). It's the team of the player with the
- * lowest seat. Tie-break: 'red' before 'blue'.
- */
-const firstTeam = (players: Player[]): TeamId => {
-  let minSeat = Infinity
-  let minRed = false
-  let minBlue = false
-  for (const p of players) {
-    if (p.seat < minSeat) {
-      minSeat = p.seat
-      minRed = p.team === 'red'
-      minBlue = p.team === 'blue'
-    } else if (p.seat === minSeat) {
-      if (p.team === 'red') minRed = true
-      else minBlue = true
-    }
-  }
-  if (minRed) return 'red'
-  if (minBlue) return 'blue'
-  // Should be unreachable when players is non-empty.
-  return 'red'
-}
-
-/**
  * Snake team sequence: A, B, B, A, A, B, B, A, ...
  * Index 0 is A; subsequent picks come in same-team pairs that alternate.
  */
@@ -33,39 +9,6 @@ const snakeTeamAt = (i: number): 'A' | 'B' => {
   // Pairs (1,2),(3,4),(5,6),... — even-indexed pairs (0,2,4,...) are B; odd pairs (1,3,5,...) are A.
   const pairIndex = Math.floor((i - 1) / 2)
   return pairIndex % 2 === 0 ? 'B' : 'A'
-}
-
-/**
- * Build the ordered list of player ids for a snake draft.
- *
- * Throws if the two teams are not equal in size.
- */
-export const buildSnakeDraftOrder = (players: Player[]): string[] => {
-  const red = players.filter((p) => p.team === 'red')
-  const blue = players.filter((p) => p.team === 'blue')
-  if (red.length !== blue.length) {
-    throw new Error('teams must be equal size')
-  }
-
-  const a = firstTeam(players)
-  const b: TeamId = a === 'red' ? 'blue' : 'red'
-
-  // Stable seat ordering — ties broken by id for determinism.
-  const byTeam: Record<TeamId, Player[]> = {
-    red: [...red].sort((x, y) => x.seat - y.seat || x.id.localeCompare(y.id)),
-    blue: [...blue].sort((x, y) => x.seat - y.seat || x.id.localeCompare(y.id)),
-  }
-
-  const cursor: Record<TeamId, number> = { red: 0, blue: 0 }
-  const total = players.length
-  const order: string[] = []
-  for (let i = 0; i < total; i++) {
-    const slot = snakeTeamAt(i)
-    const team = slot === 'A' ? a : b
-    const player = byTeam[team][cursor[team]++]
-    order.push(player.id)
-  }
-  return order
 }
 
 /**
@@ -146,34 +89,41 @@ const splitTeams = (players: Player[]): { red: Player[]; blue: Player[] } => {
 }
 
 /**
- * Alternating player order — A,B,A,B,... — where A is `startTeam`.
- * Within each team, players are taken in ascending seat order (ties by id).
+ * One collective `pick` turn per player, alternating teams A,B,A,B,…
+ * `playerId` is always null — any player on the active team may pick.
  */
-export const buildAlternatingOrder = (players: Player[], startTeam: TeamId): string[] => {
-  const { red, blue } = splitTeams(players)
-  const a = startTeam === 'red' ? red : blue
-  const b = startTeam === 'red' ? blue : red
+export const buildAllPickTurns = (players: Player[], startTeam: TeamId): DraftTurn[] => {
+  splitTeams(players) // validates equal teams
+  const a: TeamId = startTeam
+  const b: TeamId = startTeam === 'red' ? 'blue' : 'red'
 
-  const order: string[] = []
-  for (let i = 0; i < a.length; i++) {
-    order.push(a[i].id)
-    order.push(b[i].id)
+  const turns: DraftTurn[] = []
+  for (let i = 0; i < players.length; i++) {
+    const team: TeamId = i % 2 === 0 ? a : b
+    turns.push({ kind: 'pick', playerId: null, team })
   }
-  return order
+  return turns
 }
 
 /**
- * One 'pick' turn per player in alternating order. The `team` field on each
- * turn matches the acting player's team.
+ * Collective snake draft turns. The team pattern is the standard snake
+ * `A, B, B, A, A, B, B, A, …` where A = `startTeam`. Each turn is a `pick`
+ * with `playerId: null` — any player on the active team may claim the pick.
+ *
+ * Throws if the two teams are not equal in size.
  */
-export const buildAllPickTurns = (players: Player[], startTeam: TeamId): DraftTurn[] => {
-  const order = buildAlternatingOrder(players, startTeam)
-  const byId = new Map(players.map((p) => [p.id, p]))
-  return order.map((id) => {
-    const p = byId.get(id)
-    if (!p) throw new Error(`unknown player id: ${id}`)
-    return { kind: 'pick', playerId: id, team: p.team }
-  })
+export const buildSnakeTurns = (players: Player[], startTeam: TeamId): DraftTurn[] => {
+  splitTeams(players) // validates equal teams
+  const a: TeamId = startTeam
+  const b: TeamId = startTeam === 'red' ? 'blue' : 'red'
+
+  const turns: DraftTurn[] = []
+  for (let i = 0; i < players.length; i++) {
+    const slot = snakeTeamAt(i)
+    const team: TeamId = slot === 'A' ? a : b
+    turns.push({ kind: 'pick', playerId: null, team })
+  }
+  return turns
 }
 
 /**

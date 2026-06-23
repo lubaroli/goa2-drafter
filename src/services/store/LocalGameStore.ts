@@ -13,9 +13,8 @@ import type {
 } from '@/types'
 import {
   buildAllPickTurns,
-  buildAlternatingOrder,
   buildPickBanTurns,
-  buildSnakeDraftOrder,
+  buildSnakeTurns,
   coinFlipTeam,
   dealHands,
   randomAssignment,
@@ -187,20 +186,19 @@ export class LocalGameStore implements GameStore {
     let hands: Record<string, string[]> = {}
 
     if (input.method === 'snake') {
-      const draftOrder = buildSnakeDraftOrder(players)
-      const byId = new Map(players.map((p) => [p.id, p]))
-      const turns: DraftTurn[] = draftOrder.map((pid) => ({
-        kind: 'pick',
-        playerId: pid,
-        team: byId.get(pid)!.team,
-      }))
+      // Snake is COLLECTIVE: turn slots are owned by a team (A,B,B,A,…), not
+      // a specific player. Any teammate may claim their team's pick turn (the
+      // acting player owns the hero — uniform across collective methods).
+      // `turns` is the single source of truth; `draftOrder` is legacy and
+      // intentionally left empty.
+      const turns = buildSnakeTurns(players, startTeam)
       game = {
         id,
         status: 'drafting',
         playerCount: input.playerCount,
         method: 'snake',
         heroPool: [...input.heroPool],
-        draftOrder,
+        draftOrder: [],
         currentPick: 0,
         turns,
         bans: [],
@@ -235,14 +233,15 @@ export class LocalGameStore implements GameStore {
       }
     } else if (input.method === 'all-pick') {
       const turns = buildAllPickTurns(players, startTeam)
-      const draftOrder = buildAlternatingOrder(players, startTeam)
+      // `turns` is the single source of truth; `draftOrder` is legacy and
+      // intentionally left empty.
       game = {
         id,
         status: 'drafting',
         playerCount: input.playerCount,
         method: 'all-pick',
         heroPool: [...input.heroPool],
-        draftOrder,
+        draftOrder: [],
         currentPick: 0,
         turns,
         bans: [],
@@ -252,14 +251,15 @@ export class LocalGameStore implements GameStore {
     } else if (input.method === 'random-draft') {
       const trimmedPool = selectRandomDraftPool(input.heroPool, input.playerCount)
       const turns = buildAllPickTurns(players, startTeam)
-      const draftOrder = buildAlternatingOrder(players, startTeam)
+      // `turns` is the single source of truth; `draftOrder` is legacy and
+      // intentionally left empty.
       game = {
         id,
         status: 'drafting',
         playerCount: input.playerCount,
         method: 'random-draft',
         heroPool: trimmedPool,
-        draftOrder,
+        draftOrder: [],
         currentPick: 0,
         turns,
         bans: [],
@@ -437,20 +437,27 @@ export class LocalGameStore implements GameStore {
         nextBans = [...snap.game.bans, heroId]
       } else {
         // Determine the owning playerId.
+        // UNIFORM ACTING-PLAYER-OWNS RULE: across ALL collective pick methods
+        // (snake, all-pick, random-draft, pick-and-ban) the hero is claimed by
+        // the player who actually clicked — `caller.id`. A player who has
+        // already taken a pick in this game has "used up" their turn, so a
+        // second attempt is rejected as `not-your-turn` (their team turn may
+        // still be active, but it is not THEIRS to take). This guarantees
+        // each teammate picks exactly once across their team's H pick turns.
+        //
+        // We KEEP the legacy per-player branch (currentTurn.playerId !== null)
+        // for back-compat: a persisted game from before this change may still
+        // carry per-player turn entries. None of the built-in builders emit
+        // those anymore, but reading old records must still work.
         let ownerId: string
         if (currentTurn.playerId !== null) {
           ownerId = currentTurn.playerId
         } else {
-          // Collective pick: claim per-player on currentTurn.team, seat-ordered.
-          const claimed = new Set(snap.picks.map((pk) => pk.playerId))
-          const candidate = [...snap.players]
-            .filter((p) => p.team === currentTurn.team && !claimed.has(p.id))
-            .sort((a, b) => a.seat - b.seat || a.id.localeCompare(b.id))[0]
-          if (!candidate) {
-            // Shouldn't happen if turns are well-formed, but bail safely.
-            return Promise.resolve({ ok: false, error: 'game-not-drafting' satisfies PickError })
+          const callerAlreadyPicked = snap.picks.some((pk) => pk.playerId === caller.id)
+          if (callerAlreadyPicked) {
+            return Promise.resolve({ ok: false, error: 'not-your-turn' satisfies PickError })
           }
-          ownerId = candidate.id
+          ownerId = caller.id
         }
         const pick: Pick = {
           id: generateToken(),

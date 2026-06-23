@@ -133,11 +133,22 @@ export interface Game {
   method: DraftMethod
   /** Hero ids available this game. */
   heroPool: string[]
-  /** Ordered player ids — the snake pick sequence. */
+  /**
+   * @deprecated Legacy field. `turns` is the single source of truth for turn
+   * order across all turn-based draft methods (snake, all-pick, random-draft,
+   * pick-and-ban). The field is retained for back-compat with persisted
+   * snapshots and Supabase row mappers, but new code MUST consult `turns`
+   * (and `currentPick` as an index into `turns`). All current builders set
+   * this to `[]`.
+   */
   draftOrder: string[]
-  /** Index into `draftOrder` (snake only); also indexes `turns` for new methods. */
+  /** Index into `turns` (authoritative for all turn-based methods). */
   currentPick: number
-  /** Ordered turn list (pick or ban) for new draft methods; `currentPick` indexes into this. */
+  /**
+   * Ordered turn list (pick or ban) for all turn-based draft methods.
+   * Authoritative — `currentPick` indexes into this. Empty for `random`
+   * (one-shot) and `single-draft` (simultaneous, no shared turn order).
+   */
   turns: DraftTurn[]
   /** Hero ids banned so far (pick-and-ban only; empty otherwise). */
   bans: string[]

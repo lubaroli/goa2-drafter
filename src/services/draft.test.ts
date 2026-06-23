@@ -1,9 +1,8 @@
 import type { DraftTurn, Player, TeamId } from '@/types'
 import {
   buildAllPickTurns,
-  buildAlternatingOrder,
   buildPickBanTurns,
-  buildSnakeDraftOrder,
+  buildSnakeTurns,
   coinFlipTeam,
   dealHands,
   heroesPerTeam,
@@ -26,131 +25,6 @@ const makePlayer = ({ id, team, seat, name }: MakePlayerInput): Player => ({
   team,
   token: `tok-${id}`,
   seat,
-})
-
-const teamsOf = (order: string[], players: Player[]): TeamId[] => {
-  const byId = new Map(players.map((p) => [p.id, p]))
-  return order.map((id) => {
-    const p = byId.get(id)
-    if (!p) throw new Error(`unknown id: ${id}`)
-    return p.team
-  })
-}
-
-describe('buildSnakeDraftOrder', () => {
-  it('produces the A,B,B,A,A,B team pattern for 6 players (red has lowest seat)', () => {
-    const players: Player[] = [
-      makePlayer({ id: 'r0', team: 'red', seat: 0 }),
-      makePlayer({ id: 'b1', team: 'blue', seat: 1 }),
-      makePlayer({ id: 'r2', team: 'red', seat: 2 }),
-      makePlayer({ id: 'b3', team: 'blue', seat: 3 }),
-      makePlayer({ id: 'r4', team: 'red', seat: 4 }),
-      makePlayer({ id: 'b5', team: 'blue', seat: 5 }),
-    ]
-
-    const order = buildSnakeDraftOrder(players)
-
-    expect(order).toHaveLength(6)
-    expect(teamsOf(order, players)).toEqual(['red', 'blue', 'blue', 'red', 'red', 'blue'])
-  })
-
-  it('contains every player id exactly once', () => {
-    const players: Player[] = [
-      makePlayer({ id: 'r0', team: 'red', seat: 0 }),
-      makePlayer({ id: 'b1', team: 'blue', seat: 1 }),
-      makePlayer({ id: 'r2', team: 'red', seat: 2 }),
-      makePlayer({ id: 'b3', team: 'blue', seat: 3 }),
-      makePlayer({ id: 'r4', team: 'red', seat: 4 }),
-      makePlayer({ id: 'b5', team: 'blue', seat: 5 }),
-    ]
-
-    const order = buildSnakeDraftOrder(players)
-
-    expect([...order].sort()).toEqual(['b1', 'b3', 'b5', 'r0', 'r2', 'r4'])
-  })
-
-  it('respects seat order within each team (lowest seat picks first for that team)', () => {
-    const players: Player[] = [
-      makePlayer({ id: 'r-late', team: 'red', seat: 4 }),
-      makePlayer({ id: 'b-mid', team: 'blue', seat: 3 }),
-      makePlayer({ id: 'r-early', team: 'red', seat: 0 }),
-      makePlayer({ id: 'b-late', team: 'blue', seat: 5 }),
-      makePlayer({ id: 'r-mid', team: 'red', seat: 2 }),
-      makePlayer({ id: 'b-early', team: 'blue', seat: 1 }),
-    ]
-
-    const order = buildSnakeDraftOrder(players)
-
-    // Red picks at indices 0, 3, 4 (A,B,B,A,A,B). Order within red by seat: r-early, r-mid, r-late.
-    expect(order[0]).toBe('r-early')
-    expect(order[3]).toBe('r-mid')
-    expect(order[4]).toBe('r-late')
-    // Blue picks at indices 1, 2, 5. Order within blue by seat: b-early, b-mid, b-late.
-    expect(order[1]).toBe('b-early')
-    expect(order[2]).toBe('b-mid')
-    expect(order[5]).toBe('b-late')
-  })
-
-  it('produces the A,B,B,A pattern for 4 players (red has lowest seat)', () => {
-    const players: Player[] = [
-      makePlayer({ id: 'r0', team: 'red', seat: 0 }),
-      makePlayer({ id: 'b1', team: 'blue', seat: 1 }),
-      makePlayer({ id: 'r2', team: 'red', seat: 2 }),
-      makePlayer({ id: 'b3', team: 'blue', seat: 3 }),
-    ]
-
-    const order = buildSnakeDraftOrder(players)
-
-    expect(teamsOf(order, players)).toEqual(['red', 'blue', 'blue', 'red'])
-  })
-
-  it('makes blue team A when blue has the lowest seat', () => {
-    const players: Player[] = [
-      makePlayer({ id: 'b0', team: 'blue', seat: 0 }),
-      makePlayer({ id: 'r1', team: 'red', seat: 1 }),
-      makePlayer({ id: 'b2', team: 'blue', seat: 2 }),
-      makePlayer({ id: 'r3', team: 'red', seat: 3 }),
-    ]
-
-    const order = buildSnakeDraftOrder(players)
-
-    expect(teamsOf(order, players)).toEqual(['blue', 'red', 'red', 'blue'])
-  })
-
-  it('breaks ties by making red team A when both teams could be first', () => {
-    // Both teams have a player at seat 0 (contrived for tie-break check).
-    const players: Player[] = [
-      makePlayer({ id: 'r0', team: 'red', seat: 0 }),
-      makePlayer({ id: 'b0', team: 'blue', seat: 0 }),
-      makePlayer({ id: 'r1', team: 'red', seat: 1 }),
-      makePlayer({ id: 'b1', team: 'blue', seat: 1 }),
-    ]
-
-    const order = buildSnakeDraftOrder(players)
-
-    expect(teamsOf(order, players)).toEqual(['red', 'blue', 'blue', 'red'])
-  })
-
-  it('throws when teams are not equal size', () => {
-    const players: Player[] = [
-      makePlayer({ id: 'r0', team: 'red', seat: 0 }),
-      makePlayer({ id: 'r1', team: 'red', seat: 1 }),
-      makePlayer({ id: 'b2', team: 'blue', seat: 2 }),
-    ]
-
-    expect(() => buildSnakeDraftOrder(players)).toThrow('teams must be equal size')
-  })
-
-  it('throws when an even count produces unequal teams', () => {
-    const players: Player[] = [
-      makePlayer({ id: 'r0', team: 'red', seat: 0 }),
-      makePlayer({ id: 'r1', team: 'red', seat: 1 }),
-      makePlayer({ id: 'r2', team: 'red', seat: 2 }),
-      makePlayer({ id: 'b3', team: 'blue', seat: 3 }),
-    ]
-
-    expect(() => buildSnakeDraftOrder(players)).toThrow('teams must be equal size')
-  })
 })
 
 describe('randomAssignment', () => {
@@ -297,37 +171,74 @@ describe('coinFlipTeam', () => {
   })
 })
 
-describe('buildAlternatingOrder', () => {
-  it('alternates red,blue,red,blue when startTeam is red (4 players)', () => {
+describe('buildAllPickTurns', () => {
+  it('produces one collective pick turn per player alternating by team', () => {
     const players = fourPlayers()
-    const order = buildAlternatingOrder(players, 'red')
+    const turns = buildAllPickTurns(players, 'red')
 
-    expect(order).toHaveLength(4)
-    expect(teamsOf(order, players)).toEqual(['red', 'blue', 'red', 'blue'])
-    // Within each team, lowest seat first.
-    expect(order[0]).toBe('r0')
-    expect(order[2]).toBe('r2')
-    expect(order[1]).toBe('b1')
-    expect(order[3]).toBe('b3')
+    expect(turns).toHaveLength(4)
+    expect(turns.every((t) => t.kind === 'pick')).toBe(true)
+    expect(turns.every((t) => t.playerId === null)).toBe(true)
+    expect(turns.map((t) => t.team)).toEqual(['red', 'blue', 'red', 'blue'])
   })
 
-  it('alternates blue,red,blue,red when startTeam is blue (4 players)', () => {
+  it('honours startTeam=blue', () => {
     const players = fourPlayers()
-    const order = buildAlternatingOrder(players, 'blue')
+    const turns = buildAllPickTurns(players, 'blue')
 
-    expect(order).toHaveLength(4)
-    expect(teamsOf(order, players)).toEqual(['blue', 'red', 'blue', 'red'])
-    expect(order[0]).toBe('b1')
-    expect(order[2]).toBe('b3')
-    expect(order[1]).toBe('r0')
-    expect(order[3]).toBe('r2')
+    expect(turns).toHaveLength(4)
+    expect(turns.every((t) => t.kind === 'pick')).toBe(true)
+    expect(turns.every((t) => t.playerId === null)).toBe(true)
+    expect(turns.map((t) => t.team)).toEqual(['blue', 'red', 'blue', 'red'])
   })
 
-  it('contains every player id exactly once', () => {
+  it('produces players.length turns alternating teams for 6 players', () => {
     const players = sixPlayers()
-    const order = buildAlternatingOrder(players, 'red')
+    const turns = buildAllPickTurns(players, 'red')
 
-    expect([...order].sort()).toEqual(['b1', 'b3', 'b5', 'r0', 'r2', 'r4'])
+    expect(turns).toHaveLength(players.length)
+    expect(turns.every((t) => t.kind === 'pick')).toBe(true)
+    expect(turns.every((t) => t.playerId === null)).toBe(true)
+    expect(turns.map((t) => t.team)).toEqual(['red', 'blue', 'red', 'blue', 'red', 'blue'])
+  })
+})
+
+describe('buildSnakeTurns', () => {
+  it('produces collective snake turns with team pattern [red,blue,blue,red] for 4 players startTeam=red', () => {
+    const players = fourPlayers()
+    const turns = buildSnakeTurns(players, 'red')
+
+    expect(turns).toHaveLength(players.length)
+    expect(turns.every((t) => t.kind === 'pick')).toBe(true)
+    expect(turns.every((t) => t.playerId === null)).toBe(true)
+    expect(turns.map((t) => t.team)).toEqual(['red', 'blue', 'blue', 'red'])
+  })
+
+  it('produces team pattern [red,blue,blue,red,red,blue] for 6 players startTeam=red', () => {
+    const players = sixPlayers()
+    const turns = buildSnakeTurns(players, 'red')
+
+    expect(turns).toHaveLength(players.length)
+    expect(turns.every((t) => t.kind === 'pick')).toBe(true)
+    expect(turns.every((t) => t.playerId === null)).toBe(true)
+    expect(turns.map((t) => t.team)).toEqual(['red', 'blue', 'blue', 'red', 'red', 'blue'])
+  })
+
+  it('flips A/B when startTeam=blue (4 players)', () => {
+    const players = fourPlayers()
+    const turns = buildSnakeTurns(players, 'blue')
+
+    expect(turns).toHaveLength(players.length)
+    expect(turns.every((t) => t.kind === 'pick')).toBe(true)
+    expect(turns.every((t) => t.playerId === null)).toBe(true)
+    expect(turns.map((t) => t.team)).toEqual(['blue', 'red', 'red', 'blue'])
+  })
+
+  it('flips A/B when startTeam=blue (6 players)', () => {
+    const players = sixPlayers()
+    const turns = buildSnakeTurns(players, 'blue')
+
+    expect(turns.map((t) => t.team)).toEqual(['blue', 'red', 'red', 'blue', 'blue', 'red'])
   })
 
   it('throws when teams are not equal size', () => {
@@ -337,41 +248,7 @@ describe('buildAlternatingOrder', () => {
       makePlayer({ id: 'b2', team: 'blue', seat: 2 }),
     ]
 
-    expect(() => buildAlternatingOrder(players, 'red')).toThrow('teams must be equal size')
-  })
-})
-
-describe('buildAllPickTurns', () => {
-  it('produces one pick turn per player in alternating order', () => {
-    const players = fourPlayers()
-    const turns = buildAllPickTurns(players, 'red')
-
-    expect(turns).toHaveLength(4)
-    expect(turns.every((t) => t.kind === 'pick')).toBe(true)
-    expect(turns.map((t) => t.playerId)).toEqual(['r0', 'b1', 'r2', 'b3'])
-    expect(turns.map((t) => t.team)).toEqual(['red', 'blue', 'red', 'blue'])
-  })
-
-  it('honours startTeam=blue', () => {
-    const players = fourPlayers()
-    const turns = buildAllPickTurns(players, 'blue')
-
-    expect(turns.map((t) => t.playerId)).toEqual(['b1', 'r0', 'b3', 'r2'])
-    expect(turns.map((t) => t.team)).toEqual(['blue', 'red', 'blue', 'red'])
-  })
-
-  it('matches buildAlternatingOrder by playerId and team', () => {
-    const players = sixPlayers()
-    const order = buildAlternatingOrder(players, 'red')
-    const turns = buildAllPickTurns(players, 'red')
-
-    expect(turns).toHaveLength(order.length)
-    const byId = new Map(players.map((p) => [p.id, p]))
-    turns.forEach((t, i) => {
-      expect(t.kind).toBe('pick')
-      expect(t.playerId).toBe(order[i])
-      expect(t.team).toBe(byId.get(order[i])!.team)
-    })
+    expect(() => buildSnakeTurns(players, 'red')).toThrow('teams must be equal size')
   })
 })
 

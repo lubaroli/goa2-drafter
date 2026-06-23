@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { LocalGameStore } from '@/services/store/LocalGameStore'
 import { HEROES } from '@/data/heroes'
-import { nextPickerId } from '@/services/draft'
 import type {
   CreateGameInput,
   Game,
@@ -10,6 +9,7 @@ import type {
   GameStore,
   PickResult,
   Player,
+  TeamId,
 } from '@/types'
 import { useGame } from './useGame'
 
@@ -48,10 +48,26 @@ const singleDraftInput = (): CreateGameInput => ({
   method: 'single-draft',
 })
 
-const tokenForPlayer = (created: CreatedGame, playerId: string): string => {
-  const p = created.players.find((x) => x.id === playerId)
-  if (!p) throw new Error('player not found')
-  return p.token
+/**
+ * Find the next acting player for a COLLECTIVE turn-based draft (snake,
+ * all-pick, random-draft): the team is determined by `turns[currentPick].team`;
+ * the actor is any teammate who hasn't taken a pick yet. We pick the
+ * lowest-seat unpicked teammate for determinism, mirroring the rule the store
+ * applies to claim ownership.
+ */
+const nextActorForCollectiveTurn = (
+  game: Game,
+  players: Player[],
+  pickedPlayerIds: ReadonlySet<string>,
+): Player => {
+  const turn = game.turns[game.currentPick]
+  if (!turn) throw new Error('no current turn')
+  const team: TeamId = turn.team
+  const eligible = players
+    .filter((p) => p.team === team && !pickedPlayerIds.has(p.id))
+    .sort((a, b) => a.seat - b.seat || a.id.localeCompare(b.id))
+  if (eligible.length === 0) throw new Error('no eligible teammate for active turn')
+  return eligible[0]
 }
 
 const pickAvailable = (created: CreatedGame, usedHeroIds: Set<string>): string => {
@@ -69,7 +85,7 @@ afterEach(() => {
 })
 
 describe('useGame', () => {
-  it('loads the snapshot and exposes the first picker', async () => {
+  it('loads the snapshot and exposes the first team on the clock (snake is collective)', async () => {
     const store = new LocalGameStore()
     const created = await store.createGame(fourPlayerInput())
 
@@ -85,52 +101,70 @@ describe('useGame', () => {
 
     expect(result.current.error).toBeNull()
     expect(result.current.snapshot?.game.id).toBe(created.game.id)
-    expect(result.current.currentPickerId).toBe(created.game.draftOrder[0])
+    // Snake is now COLLECTIVE: turns carry a team, not a player id.
+    // currentPickerId is null; the active team comes from currentTurn.team.
+    expect(result.current.currentPickerId).toBeNull()
+    const firstTurn = result.current.currentTurn
+    expect(firstTurn).not.toBeNull()
+    expect(firstTurn?.kind).toBe('pick')
+    expect(firstTurn?.playerId).toBeNull()
+    expect(firstTurn?.team).toBe(created.game.turns[0].team)
     expect(result.current.isComplete).toBe(false)
   })
 
-  it('makePick by the wrong player returns ok:false and snapshot is unchanged', async () => {
+  it('makePick by a wrong-team player returns ok:false and snapshot is unchanged', async () => {
     const store = new LocalGameStore()
     const created = await store.createGame(fourPlayerInput())
 
     const { result } = renderHook(() => useGame(created.game.id, store))
     await waitFor(() => expect(result.current.snapshot).not.toBeNull())
 
-    const wrongPlayerId = created.game.draftOrder[1]
-    const wrongToken = tokenForPlayer(created, wrongPlayerId)
+    // Snake is collective: turns are owned by a team. Pick a player on the
+    // OTHER team than the active one to deterministically trigger 'not-your-team'.
+    const activeTeam = created.game.turns[0].team
+    const wrongTeam: TeamId = activeTeam === 'red' ? 'blue' : 'red'
+    const wrongPlayer = created.players.find((p) => p.team === wrongTeam)
+    if (!wrongPlayer) throw new Error('expected a player on the other team')
     const heroId = created.game.heroPool[0]
 
     let res: PickResult | undefined
     await act(async () => {
-      res = await result.current.makePick(wrongToken, heroId)
+      res = await result.current.makePick(wrongPlayer.token, heroId)
     })
 
-    expect(res).toEqual({ ok: false, error: 'not-your-turn' })
-    expect(result.current.currentPickerId).toBe(created.game.draftOrder[0])
+    expect(res).toEqual({ ok: false, error: 'not-your-team' })
+    // currentPickerId stays null (collective turn), turn is unchanged.
+    expect(result.current.currentPickerId).toBeNull()
+    expect(result.current.currentTurn?.team).toBe(activeTeam)
     expect(result.current.snapshot?.picks).toHaveLength(0)
   })
 
-  it('makePick by the current picker advances the snapshot', async () => {
+  it('makePick by an active-team player advances the snapshot (collective snake)', async () => {
     const store = new LocalGameStore()
     const created = await store.createGame(fourPlayerInput())
 
     const { result } = renderHook(() => useGame(created.game.id, store))
     await waitFor(() => expect(result.current.snapshot).not.toBeNull())
 
-    const correctPlayerId = created.game.draftOrder[0]
-    const correctToken = tokenForPlayer(created, correctPlayerId)
+    // Pick any teammate on the active team — collective turn.
+    const actor = nextActorForCollectiveTurn(created.game, created.players, new Set())
     const heroId = created.game.heroPool[0]
 
     let res: PickResult | undefined
     await act(async () => {
-      res = await result.current.makePick(correctToken, heroId)
+      res = await result.current.makePick(actor.token, heroId)
     })
 
     expect(res?.ok).toBe(true)
     await waitFor(() => {
       expect(result.current.snapshot?.picks).toHaveLength(1)
-      expect(result.current.currentPickerId).toBe(created.game.draftOrder[1])
     })
+    // The next turn (also collective) belongs to a team; currentPickerId is null.
+    expect(result.current.currentPickerId).toBeNull()
+    expect(result.current.snapshot?.game.currentPick).toBe(1)
+    expect(result.current.currentTurn?.team).toBe(result.current.snapshot?.game.turns[1].team)
+    // The acting player owns the hero.
+    expect(result.current.snapshot?.picks[0].playerId).toBe(actor.id)
   })
 
   it('subscribes to the same store: external picks update the hook snapshot', async () => {
@@ -140,18 +174,19 @@ describe('useGame', () => {
     const { result } = renderHook(() => useGame(created.game.id, store))
     await waitFor(() => expect(result.current.snapshot).not.toBeNull())
 
-    const firstPickerId = created.game.draftOrder[0]
-    const firstToken = tokenForPlayer(created, firstPickerId)
+    const actor = nextActorForCollectiveTurn(created.game, created.players, new Set())
     const heroId = created.game.heroPool[0]
 
     await act(async () => {
-      await store.makePick(created.game.id, firstToken, heroId)
+      await store.makePick(created.game.id, actor.token, heroId)
     })
 
     await waitFor(() => {
       expect(result.current.snapshot?.picks).toHaveLength(1)
-      expect(result.current.currentPickerId).toBe(created.game.draftOrder[1])
+      expect(result.current.snapshot?.game.currentPick).toBe(1)
     })
+    // Collective: no per-player picker id.
+    expect(result.current.currentPickerId).toBeNull()
   })
 
   it('returns an error for an unknown gameId', async () => {
@@ -191,15 +226,19 @@ describe('useGame', () => {
     await waitFor(() => expect(result.current.snapshot).not.toBeNull())
 
     const used = new Set<string>()
-    for (let i = 0; i < created.game.draftOrder.length; i++) {
-      const pickerId = nextPickerId(created.game.draftOrder, i)
-      if (!pickerId) throw new Error('expected a picker')
-      const token = tokenForPlayer(created, pickerId)
+    const pickedPlayerIds = new Set<string>()
+    const totalPicks = created.game.turns.filter((t) => t.kind === 'pick').length
+    for (let i = 0; i < totalPicks; i++) {
+      // Read the live game so currentPick is fresh after each pick.
+      const liveGame = result.current.snapshot?.game
+      if (!liveGame) throw new Error('expected a live game')
+      const actor = nextActorForCollectiveTurn(liveGame, created.players, pickedPlayerIds)
       const heroId = pickAvailable(created, used)
       used.add(heroId)
+      pickedPlayerIds.add(actor.id)
       let res: PickResult | undefined
       await act(async () => {
-        res = await result.current.makePick(token, heroId)
+        res = await result.current.makePick(actor.token, heroId)
       })
       expect(res?.ok).toBe(true)
     }
@@ -208,7 +247,7 @@ describe('useGame', () => {
       expect(result.current.isComplete).toBe(true)
     })
     expect(result.current.currentPickerId).toBeNull()
-    expect(result.current.snapshot?.picks).toHaveLength(created.game.draftOrder.length)
+    expect(result.current.snapshot?.picks).toHaveLength(totalPicks)
   })
 
   it('refresh re-fetches the snapshot independently of subscription', async () => {
@@ -232,7 +271,7 @@ describe('useGame', () => {
       picks: [
         {
           id: 'pick-b',
-          playerId: created.game.draftOrder[0],
+          playerId: created.players[0].id,
           heroId: created.game.heroPool[0],
           pickIndex: 0,
           createdAt: 1,
@@ -277,7 +316,7 @@ describe('useGame', () => {
   })
 
   describe('currentTurn / bans / playerView', () => {
-    it('all-pick: currentTurn is a pick turn with a playerId; currentPickerId matches; bans empty', async () => {
+    it('all-pick: currentTurn is a collective pick turn (playerId null, team set); bans empty', async () => {
       const store = new LocalGameStore()
       const created = await store.createGame(allPickInput())
 
@@ -287,9 +326,11 @@ describe('useGame', () => {
       const turn = result.current.currentTurn
       expect(turn).not.toBeNull()
       expect(turn?.kind).toBe('pick')
-      expect(typeof turn?.playerId).toBe('string')
-      expect(turn?.playerId).not.toBeNull()
-      expect(result.current.currentPickerId).toBe(turn?.playerId)
+      // All-pick is now COLLECTIVE — the active team is what matters, not a
+      // specific player. playerId is null; currentPickerId mirrors that.
+      expect(turn?.playerId).toBeNull()
+      expect(result.current.currentPickerId).toBeNull()
+      expect(turn?.team === 'red' || turn?.team === 'blue').toBe(true)
       expect(result.current.bans).toEqual([])
     })
 

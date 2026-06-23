@@ -262,9 +262,14 @@ grant  select (id, game_id, name, team, seat) on public.players to anon;
 --       must be in `games.hero_pool`.
 --     - Commit:
 --         * ban  → append hero to `games.bans`, no pick row inserted.
---         * pick → owner is `turn.playerId` if not null, else the player on
---           `turn.team` with the lowest seat (tie: id) who has no pick yet;
---           insert a pick row with `pick_index = current_pick`.
+--         * pick → owner is `turn.playerId` if not null (legacy per-player
+--           turn, kept for back-compat with persisted games — none of the
+--           current builders emit those). Otherwise (collective pick turn —
+--           snake, all-pick, random-draft, pick-and-ban) the ACTING player
+--           (v_player) owns the hero, provided they don't already have one;
+--           if they do, return 'not-your-turn'. This is the UNIFORM acting-
+--           player-owns rule across every collective pick method. Mirrors
+--           LocalGameStore.makePick.
 --     - Advance `current_pick`. Status flips to 'complete' iff there is no
 --       remaining turn at index >= new current_pick with kind = 'pick'.
 --
@@ -470,26 +475,29 @@ begin
         current_pick = v_game.current_pick + 1
     where id = p_game_id;
   else
-    -- Determine owner: per-player turn → turn.playerId; collective → lowest
-    -- seat (ties by id) on turn.team with no existing pick row.
+    -- Determine owner.
+    -- UNIFORM ACTING-PLAYER-OWNS RULE: across ALL collective pick methods
+    -- (snake, all-pick, random-draft, pick-and-ban) the hero is claimed by
+    -- the acting player (v_player). A player who has already taken a pick
+    -- in this game has "used up" their turn — a second attempt is rejected
+    -- as `not-your-turn` (their team turn may still be active, but it is
+    -- not THEIRS to take). This guarantees each teammate picks exactly
+    -- once across their team's H pick turns. Mirrors LocalGameStore.makePick.
+    --
+    -- The legacy per-player branch (v_turn_player_id is not null) is kept
+    -- for back-compat: a persisted game from before this change may still
+    -- carry per-player turn entries. None of the built-in builders emit
+    -- those anymore, but reading old records must still work.
     if v_turn_player_id is not null then
       v_owner_id := v_turn_player_id;
     else
-      select p.id into v_owner_id
-      from public.players p
-      where p.game_id = p_game_id
-        and p.team = v_turn_team
-        and not exists (
-          select 1 from public.picks pk
-          where pk.game_id = p_game_id and pk.player_id = p.id
-        )
-      order by p.seat asc, p.id asc
-      limit 1;
-
-      if v_owner_id is null then
-        -- Well-formed turn lists should never reach here; bail safely.
-        return jsonb_build_object('error', 'game-not-drafting');
+      if exists (
+        select 1 from public.picks pk
+        where pk.game_id = p_game_id and pk.player_id = v_player.id
+      ) then
+        return jsonb_build_object('error', 'not-your-turn');
       end if;
+      v_owner_id := v_player.id;
     end if;
 
     v_pick_id := gen_random_uuid()::text;
