@@ -5,6 +5,10 @@ import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 
 // https://vite.dev/config/
+// Base path is env-driven so the same repo can deploy to GitHub Pages (served
+// under /goa2-drafter/) and to a root-served host like Vercel (VITE_BASE_PATH=/).
+const base = process.env.VITE_BASE_PATH ?? '/goa2-drafter/'
+
 const config: UserConfig & { test?: unknown } = {
   plugins: [react(), tailwindcss()],
   resolve: {
@@ -12,7 +16,7 @@ const config: UserConfig & { test?: unknown } = {
       '@': path.resolve(__dirname, './src'),
     },
   },
-  base: '/goa2-drafter/',
+  base,
   test: {
     globals: true,
     environment: 'jsdom',
